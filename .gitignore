@@ -1,0 +1,10 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Blender files (dev workspace, not part of the addon)
+*.blend
+*.blend1
+
+# Development utility (not part of the addon)
+dev_loader.py
