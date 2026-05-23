@@ -159,6 +159,7 @@ def build_preview_mesh(context, problem, show_domain=True):
         cz = offset[2] + (k + 0.5) * vs
         _make_cube_bmesh(bm, (cx, cy, cz), cube_size, tuple(role_color[i, j, k]))
 
+    bm.normal_update()
     bm.to_mesh(mesh)
     bm.free()
     mesh.update()
@@ -276,6 +277,7 @@ def build_result_preview(context, problem, density, threshold=0.3):
         cz = offset[2] + (k + 0.5) * vs
         _make_cube_bmesh(bm, (cx, cy, cz), cube_size, tuple(colors_arr[n]))
 
+    bm.normal_update()
     bm.to_mesh(mesh)
     bm.free()
     mesh.update()

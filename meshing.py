@@ -87,7 +87,10 @@ def generate(
     bm = bmesh.new()
     bm.from_mesh(mesh)
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=vs * 0.01)
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    # Do NOT call recalc_face_normals here — marching_cubes with
+    # gradient_direction='descent' already produces consistent outward normals.
+    # recalc_face_normals uses graph-flood and mis-orients disconnected
+    # components (thin topology results), producing the half-in/half-out pattern.
     bm.normal_update()
     bm.to_mesh(mesh)
     bm.free()
