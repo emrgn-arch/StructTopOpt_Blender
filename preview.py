@@ -40,11 +40,12 @@ def _domain_shell(mask):
     """Return only the boundary voxels of a boolean mask — those with at least
     one face-adjacent neighbour that is False (outside the domain).
     Interior voxels are excluded so role voxels inside remain visible."""
-    interior = (
-        np.roll(mask,  1, 0) & np.roll(mask, -1, 0) &
-        np.roll(mask,  1, 1) & np.roll(mask, -1, 1) &
-        np.roll(mask,  1, 2) & np.roll(mask, -1, 2) &
-        mask
+    interior = np.zeros_like(mask)
+    interior[1:-1, 1:-1, 1:-1] = (
+        mask[1:-1, 1:-1, 1:-1] &
+        mask[:-2,  1:-1, 1:-1] & mask[2:,   1:-1, 1:-1] &
+        mask[1:-1, :-2,  1:-1] & mask[1:-1, 2:,   1:-1] &
+        mask[1:-1, 1:-1, :-2]  & mask[1:-1, 1:-1, 2:]
     )
     return mask & ~interior
 
@@ -93,35 +94,22 @@ def build_preview_mesh(context, problem, show_domain=True):
     grid_shape = problem.shape
     vs = problem.voxel_size
 
-    # Voxel center in domain-local space:
-    #   center_local = grid_offset_local + (i+0.5, j+0.5, k+0.5) * vs
-    # We bake those into the preview's vertex coordinates and then parent
-    # the preview to the domain object so it moves with the domain.
 
-    # Decide each voxel's role and color. Priority for display, top to bottom.
     nx, ny, nz = grid_shape
     role_color = np.zeros((nx, ny, nz, 4), dtype=np.float32)
     role_show = np.zeros((nx, ny, nz), dtype=bool)
 
-    # Domain — only the outer shell of voxels (those touching non-domain space).
-    # Showing only the boundary keeps the interior open so property/load/support
-    # voxels inside are always visible regardless of viewport shading mode.
     if show_domain:
         m = problem.domain_mask
         shell = _domain_shell(m)
         role_color[shell] = _COLOR_DOMAIN
         role_show |= shell
 
-    # Property regions (yellow) — show ALL tagged property region voxels,
-    # not just those derived as passive_solid, so intermediate densities also appear.
+
     for pr in problem.property_regions:
         m = pr.mask & ~problem.support_mask
         role_color[m] = _COLOR_KEEP
         role_show |= m
-
-    # Loads (blue) — flat color. Direction is shown in the panel's numeric
-    # fields; encoding direction as RGB turned out to be too confusing in
-    # practice (e.g. -Z reads as yellow rather than the intuitive 'down').
     load_combined = np.zeros(grid_shape, dtype=bool)
     for lc in problem.loads:
         load_combined |= lc.mask
