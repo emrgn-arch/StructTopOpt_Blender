@@ -13,7 +13,7 @@ Panel appears in the 3D viewport N-panel under the 'Struct Topo' tab.
 
 bl_info = {
     "name":        "Structural Topology Optimization",
-    "author":      "you + claude",
+    "author":      "Emre Ergin",
     "version":     (0, 3, 0),
     "blender":     (3, 6, 0),
     "location":    "View3D > N-panel > Struct Topo",
@@ -54,10 +54,13 @@ def register():
     ui.register()
 
     import bpy as _bpy
-    for scene in _bpy.data.scenes:
-        scene.topopt.is_solving             = False
-        scene.topopt.solve_cancel_requested = False
-        scene.topopt.solve_confirm_pending  = False
+    try:
+        for scene in _bpy.data.scenes:
+            scene.topopt.is_solving             = False
+            scene.topopt.solve_cancel_requested = False
+            scene.topopt.solve_confirm_pending  = False
+    except AttributeError:
+        pass  # bpy.data not yet available during install-time registration
 
 
 def unregister():
