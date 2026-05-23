@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build addon zip
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'EOF'
+          import zipfile, pathlib, os
+
+          tag          = os.environ["TAG"]
+          exclude_dirs = {".git", ".github", "__pycache__"}
+          exclude_files = {"dev_loader.py"}
+          out = f"StructTopOpt_Blender_{tag}.zip"
+
+          with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+              for f in pathlib.Path(".").rglob("*"):
+                  if set(f.parts) & exclude_dirs:
+                      continue
+                  if f.name in exclude_files or f.suffix == ".pyc":
+                      continue
+                  if f.is_file():
+                      zf.write(f, pathlib.Path("StructTopOpt_Blender") / f)
+          print(f"Created {out}")
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: StructTopOpt_Blender_${{ github.ref_name }}.zip
+          generate_release_notes: true
