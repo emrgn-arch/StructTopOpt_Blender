@@ -28,10 +28,10 @@ ROLE_ITEMS = [
 
 # Colors match the voxel preview so source meshes and preview cubes look consistent.
 _ROLE_STYLE = {
-    ROLE_DOMAIN:   ((0.70, 0.70, 0.70), 0.25),
-    ROLE_SUPPORT:  ((0.90, 0.15, 0.15), 0.50),
-    ROLE_LOAD:     ((0.15, 0.30, 0.90), 0.50),
-    ROLE_PROPERTY: ((0.95, 0.85, 0.10), 0.50),
+    ROLE_DOMAIN:   ((0.70, 0.70, 0.70), 0.75),
+    ROLE_SUPPORT:  ((0.90, 0.15, 0.15), 0.75),
+    ROLE_LOAD:     ((0.15, 0.30, 0.90), 0.75),
+    ROLE_PROPERTY: ((0.95, 0.85, 0.10), 0.75),
 }
 
 
@@ -87,12 +87,13 @@ def _apply_role_material(obj, role):
 
 
 def _on_role_change(self, context):
-    # context.active_object may not be the object owning this PropertyGroup
-    # when the role is set programmatically on non-active objects.
-    for obj in context.scene.objects:
-        if obj.type == 'MESH' and obj.topopt is self:
-            _apply_role_material(obj, self.role)
-            return
+    obj = self.id_data  # reliable owner lookup; 'is' comparison on wrappers always fails
+    if obj is not None and obj.type == 'MESH':
+        _apply_role_material(obj, self.role)
+    for area in context.screen.areas:
+        if area.type == 'VIEW_3D':
+            area.spaces.active.shading.type = 'MATERIAL'
+            break
 
 
 def _apply_threshold(scene_props, context):
@@ -129,7 +130,7 @@ class TopOptObjectProps(PropertyGroup):
     domain_youngs_modulus: FloatProperty(
         name="Young's Modulus (GPa)",
         description="Material stiffness. Steel ~200, aluminum ~70, plastic ~2",
-        default=200.0, min=0.001, soft_max=500.0,
+        default=60.0, min=0.01, soft_max=500.0,
     )
     domain_poissons_ratio: FloatProperty(
         name="Poisson's Ratio",
@@ -186,7 +187,7 @@ class TopOptSceneProps(PropertyGroup):
     iter_timeout_secs: IntProperty(
         name="Iter Timeout (s)",
         description="Cancel the solver if a single iteration takes longer than this many seconds",
-        default=120, min=10, max=3600,
+        default=60, min=10, max=3600,
     )
     oc_move_limit: FloatProperty(
         name="OC Move Limit",
@@ -206,7 +207,7 @@ class TopOptSceneProps(PropertyGroup):
     density_threshold: FloatProperty(
         name="Threshold",
         description="Hide voxels below this density in the result view",
-        default=0.3, min=0.0, max=1.0, subtype='FACTOR',
+        default=0.8, min=0.0, max=1.0, subtype='FACTOR',
         update=lambda self, ctx: _apply_threshold(self, ctx),
     )
     grid_domain_voxels: IntProperty(default=0)
