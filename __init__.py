@@ -18,6 +18,8 @@ bl_info = {
     "blender":     (3, 6, 0),
     "location":    "View3D > N-panel > Struct Topo",
     "description": "SIMP+OC structural topology optimisation with voxelized meshes",
+    "doc_url":     "https://github.com/emrgn-arch/StructTopOpt_Blender",
+    "tracker_url": "https://github.com/emrgn-arch/StructTopOpt_Blender/issues",
     "category":    "Object",
 }
 
