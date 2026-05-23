@@ -501,7 +501,7 @@ class TOPOPT_PT_main(Panel):
             row = box.row()
             row.scale_y = 1.4
             if sp.solve_status == "Converged":
-                row.label(text="  Converged", icon='SEQUENCE_COLOR_04')
+                row.label(text="Converged", icon='CHECKMARK')
             else:
                 row.alert = True
                 row.label(text=sp.solve_status, icon='CANCEL')
