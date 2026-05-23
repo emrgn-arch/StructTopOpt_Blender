@@ -54,6 +54,10 @@ Run the solver with the **Solve** button. Progress is shown live — iteration c
 | **Iter Timeout** | `60` s | Cancels the solve if a single iteration exceeds this duration. Reduce grid resolution if this triggers. |
 | **OC Move Limit** | `0.2` | Maximum density change allowed per OC step. Lower is more stable; higher converges faster but can oscillate. |
 
+<div align="center">
+  <img src="media/solver.gif" width="500"/>
+</div>
+
 ---
 
 ## Result & Preview
@@ -70,3 +74,7 @@ Click **Generate Mesh** to extract a smooth isosurface from the density field vi
 | **Smooth** | Strength of each smoothing pass (`0` = off, `1` = maximum). |
 
 > I highly suggest modelling the geometry manually based on the voxel and meshing results due to the potential artifacts and non-optimal topology generation of the current state of the add-on.
+
+## Examples
+
+TODO: Populate here with gif + explanations
