@@ -93,6 +93,11 @@ class TOPOPT_OT_voxelize_preview(Operator):
                 obj.hide_set(True)
                 hidden_count += 1
 
+        for area in context.screen.areas:
+            if area.type == 'VIEW_3D':
+                area.spaces.active.shading.type = 'MATERIAL'
+                break
+
         summary_lines = problem.summarize(p).split("\n")
         for line in summary_lines:
             print("[Struct Topo] " + line)
@@ -143,7 +148,7 @@ class TOPOPT_OT_solve_3d(Operator):
         if event.type == 'TIMER':
             if sp.solve_cancel_requested:
                 self._finish(context)
-                sp.solve_status = "Cancelled."
+                sp.solve_status = "Cancelled"
                 return {'CANCELLED'}
 
             t0 = time.time()
@@ -151,6 +156,7 @@ class TOPOPT_OT_solve_3d(Operator):
                 result = next(self._gen)
             except StopIteration:
                 self._finish(context)
+                sp.solve_status = "Max iterations reached"
                 self._show_result(context)
                 return {'FINISHED'}
             except RuntimeError as err:
@@ -183,7 +189,7 @@ class TOPOPT_OT_solve_3d(Operator):
             sp.solve_iter_info       = f"Iter {result.iteration}/{max_iter}"
             sp.solve_time_info       = f"Iter: {_fmt(elapsed)}"
             sp.solve_total_time_info = f"Total: {_fmt(total)}"
-            sp.solve_status          = "✓" if result.converged else ""
+            sp.solve_status          = "Converged" if result.converged else ""
             sp.solve_compliance_info = f"Comp={result.compliance:.4g}"
             sp.solve_volume_info     = f"Vol={result.vol_frac:.3f}"
             sp.solve_change_info     = f"Δ={result.change:.5f}"
@@ -191,11 +197,13 @@ class TOPOPT_OT_solve_3d(Operator):
             if result.converged:
                 self._finish(context)
                 self._show_result(context)
+                self.report({'INFO'}, f"Converged in {result.iteration} iterations.")
                 return {'FINISHED'}
 
         elif event.type in {'ESC', 'RIGHTMOUSE'}:
             self._finish(context)
-            sp.solve_status = "Cancelled."
+            sp.solve_status = "Cancelled"
+            self.report({'WARNING'}, "Solve cancelled.")
             return {'CANCELLED'}
 
         return {'PASS_THROUGH'}
@@ -420,21 +428,21 @@ class TOPOPT_PT_main(Panel):
         box.prop(scene.topopt, "voxel_size")
         if scene.topopt.grid_info:
             box.label(text=scene.topopt.grid_info)
-        n_dom = scene.topopt.grid_domain_voxels
-        if n_dom > 50000:
-            w = box.column()
-            w.alert = True
-            w.label(text=f"{n_dom} voxels — 3D solve will be very slow!", icon='ERROR')
-            w.label(text="Increase voxel size to reduce count")
-        elif n_dom > 15000:
-            w = box.column()
-            w.alert = True
-            w.label(text=f"{n_dom} voxels — solve may be slow", icon='INFO')
-
         # ----- Model Actions -----
         box = layout.box()
         box.label(text="Model Actions", icon='MESH_CUBE')
         box.operator("topopt.voxelize_preview", icon='MESH_GRID')
+        n_dom = scene.topopt.grid_domain_voxels
+        est_dof = 3 * n_dom
+        if est_dof > 150_000:
+            w = box.column()
+            w.alert = True
+            w.label(text=f"~{est_dof:,} DOFs — 3D solve will be very slow!", icon='ERROR')
+            w.label(text="Increase voxel size to reduce DOF count")
+        elif est_dof > 45_000:
+            w = box.column()
+            w.alert = True
+            w.label(text=f"~{est_dof:,} DOFs — solve may be slow", icon='INFO')
         row = box.row(align=True)
         row.operator("topopt.toggle_sources", text="Show/Hide Sources", icon='HIDE_OFF')
         row.operator("topopt.print_summary",  text="Summary", icon='TEXT')
@@ -486,8 +494,17 @@ class TOPOPT_PT_main(Panel):
             box.label(text=sp.solve_status, icon='TIME')
         elif sp.solve_iter_info:
             col2 = box.column(align=True)
-            col2.label(text=f"{sp.solve_iter_info}   {sp.solve_time_info}   {sp.solve_total_time_info}   {sp.solve_status}")
+            col2.label(text=f"{sp.solve_iter_info}   {sp.solve_time_info}   {sp.solve_total_time_info}")
             col2.label(text=f"{sp.solve_compliance_info}   {sp.solve_volume_info}   {sp.solve_change_info}")
+
+        if not sp.is_solving and sp.solve_status:
+            row = box.row()
+            row.scale_y = 1.4
+            if sp.solve_status == "Converged":
+                row.label(text="  Converged", icon='SEQUENCE_COLOR_04')
+            else:
+                row.alert = True
+                row.label(text=sp.solve_status, icon='CANCEL')
 
         if res.get_cached_density() is not None:
             box2 = layout.box()
