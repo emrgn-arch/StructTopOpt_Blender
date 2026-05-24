@@ -1,5 +1,9 @@
 # Structural Topology Optimization for Blender
 
+<div align="center">
+  <img src="media/thumbnail.gif"/>
+</div>
+
 [![Latest Release](https://img.shields.io/github/v/release/emrgn-arch/StructTopOpt_Blender)](https://github.com/emrgn-arch/StructTopOpt_Blender/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Blender](https://img.shields.io/badge/Blender-3.6%2B-orange.svg)](https://www.blender.org/download/)
