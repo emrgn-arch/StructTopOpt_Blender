@@ -6,7 +6,7 @@
 
 [![Latest Release](https://img.shields.io/github/v/release/emrgn-arch/StructTopOpt_Blender)](https://github.com/emrgn-arch/StructTopOpt_Blender/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Blender](https://img.shields.io/badge/Blender-3.6%2B-orange.svg)](https://www.blender.org/download/)
+[![Blender](https://img.shields.io/badge/Blender-4.2%2B-orange.svg)](https://www.blender.org/download/)
 
 A Blender addon for early-stage structural topology optimization, intended as a tool for **geometry discovery** through analyzing applied loads, boundary conditions and material distribution within the given design space.
 
@@ -26,7 +26,7 @@ To be clear upfront regarding Blender implementation: this is *structural* topol
 3. Enable **Object: Structural Topology Optimization**.
 4. The panel appears in the **3D Viewport N-panel** under the **Struct Topo** tab.
 
-`scipy` is installed automatically on first enable through pip for instalation through github releases.
+`scipy` is bundled inside the zip — no extra installation required.
 
 ---
 
