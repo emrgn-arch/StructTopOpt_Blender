@@ -14,7 +14,7 @@ Panel appears in the 3D viewport N-panel under the 'Struct Topo' tab.
 bl_info = {
     "name":        "Structural Topology Optimization",
     "author":      "Emre Ergin",
-    "version":     (0, 3, 6),
+    "version":     (0, 3, 7),
     "blender":     (4, 2, 0),
     "location":    "View3D > N-panel > Struct Topo",
     "description": "SIMP+OC structural topology optimisation with voxelized meshes",

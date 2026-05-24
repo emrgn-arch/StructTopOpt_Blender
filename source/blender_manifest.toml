@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id            = "struct_topo_opt"
-version       = "0.3.6"
+version       = "0.3.7"
 name          = "Structural Topology Optimization"
 tagline       = "SIMP+OC structural topology optimization in the viewport"
 maintainer    = "Emre Ergin <emrgn.arch@gmail.com>"
@@ -9,7 +9,11 @@ type          = "add-on"
 
 blender_version_min = "4.2.0"
 
-license = ["SPDX:MIT"]
+license    = ["SPDX:MIT"]
+copyright  = [
+    "2024 Emre Ergin",
+    "2001-2024 SciPy Developers (bundled scipy wheel, BSD-3-Clause)",
+]
 website = "https://github.com/emrgn-arch/StructTopOpt_Blender"
 tags    = ["Mesh", "Object", "Physics"]
 
