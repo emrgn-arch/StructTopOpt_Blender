@@ -21,17 +21,7 @@ wheels = [
 [build]
 paths_exclude_pattern = [
     "__pycache__/",
-    ".git/",
-    ".github/",
-    ".venv/",
-    "devZone/",
-    "media/",
-    "examples/",
-    "build/",
-    "dist/",
     "*.pyc",
     "*.zip",
     "*.blend",
-    ".gitignore",
-    "README.md",
 ]
