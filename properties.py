@@ -99,17 +99,34 @@ def _on_role_change(self, context):
 def _apply_threshold(scene_props, context):
     if scene_props.is_solving:
         return
-    from . import results as _res
-    from . import preview as _prev
-    from . import problem as _prob
+    import bpy as _bpy
+    from . import results  as _res
+    from . import preview  as _prev
+    from . import problem  as _prob
+    from . import meshing  as _mesh
+
     density = _res.get_cached_density()
     if density is None:
         return
     try:
         p = _prob.gather_problem(context)
-        _prev.build_result_preview(context, p, density, scene_props.density_threshold)
     except Exception:
-        pass
+        return
+
+    if _mesh.MESH_NAME in _bpy.data.objects:
+        if _prev.PREVIEW_NAME in _bpy.data.objects:
+            _bpy.data.objects[_prev.PREVIEW_NAME].hide_set(True)
+        _mesh.generate(
+            context, p, density,
+            threshold         = scene_props.density_threshold,
+            include_supports  = scene_props.mesh_include_supports,
+            include_loads     = scene_props.mesh_include_loads,
+            close_holes       = scene_props.mesh_close_holes,
+            smooth_factor     = scene_props.mesh_smooth_factor,
+            smooth_iterations = scene_props.mesh_smooth_iterations,
+        )
+    else:
+        _prev.build_result_preview(context, p, density, scene_props.density_threshold)
 
 
 class TopOptObjectProps(PropertyGroup):
@@ -212,10 +229,15 @@ class TopOptSceneProps(PropertyGroup):
     )
     grid_domain_voxels: IntProperty(default=0)
 
-    mesh_exclude_loads: BoolProperty(
-        name="Exclude Loads",
-        description="Do not force load voxels to solid — let the optimised density decide",
-        default=False,
+    mesh_include_supports: BoolProperty(
+        name="Include Supports",
+        description="Force support voxels solid in the extracted mesh",
+        default=True,
+    )
+    mesh_include_loads: BoolProperty(
+        name="Include Loads",
+        description="Force load voxels solid in the extracted mesh",
+        default=True,
     )
     mesh_close_holes: BoolProperty(
         name="Close Holes",

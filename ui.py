@@ -319,7 +319,8 @@ class TOPOPT_OT_generate_mesh(Operator):
         obj = meshing.generate(
             context, p, density,
             threshold         = sp.density_threshold,
-            exclude_loads     = sp.mesh_exclude_loads,
+            include_supports  = sp.mesh_include_supports,
+            include_loads     = sp.mesh_include_loads,
             close_holes       = sp.mesh_close_holes,
             smooth_factor     = sp.mesh_smooth_factor,
             smooth_iterations = sp.mesh_smooth_iterations,
@@ -328,7 +329,9 @@ class TOPOPT_OT_generate_mesh(Operator):
             self.report({'WARNING'}, "No voxels above threshold — lower the threshold.")
             return {'CANCELLED'}
 
-        # Select the generated mesh so the user can work with it immediately.
+        if preview.PREVIEW_NAME in bpy.data.objects:
+            bpy.data.objects[preview.PREVIEW_NAME].hide_set(True)
+
         for o in context.scene.objects:
             o.select_set(False)
         obj.select_set(True)
@@ -513,7 +516,8 @@ class TOPOPT_PT_main(Panel):
             box2.separator(factor=0.4)
             row_m1 = box2.row(align=True)
             row_m1.prop(scene.topopt, "mesh_close_holes",   toggle=True)
-            row_m1.prop(scene.topopt, "mesh_exclude_loads", toggle=True)
+            row_m1.prop(scene.topopt, "mesh_include_supports", toggle=True)
+            row_m1.prop(scene.topopt, "mesh_include_loads",    toggle=True)
             row_m2 = box2.row(align=True)
             row_m2.prop(scene.topopt, "mesh_smooth_iterations", text="Passes")
             row_m2.prop(scene.topopt, "mesh_smooth_factor",     text="Smooth")

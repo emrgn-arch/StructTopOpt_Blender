@@ -14,7 +14,8 @@ def generate(
     problem,
     density_3d,
     threshold=0.5,
-    exclude_loads=False,
+    include_supports=True,
+    include_loads=True,
     close_holes=False,
     smooth_factor=0.5,
     smooth_iterations=5,
@@ -39,9 +40,12 @@ def generate(
 
     vol = density_3d.copy().astype(np.float32)
     vol[~problem.domain_mask] = 0.0
-    vol[problem.support_mask] = 0.0  # supports are BCs, not design material
+    if include_supports:
+        vol[problem.support_mask] = 1.0
+    else:
+        vol[problem.support_mask] = 0.0
 
-    if not exclude_loads:
+    if include_loads:
         for lc in problem.loads:
             vol[lc.mask] = 1.0
 
