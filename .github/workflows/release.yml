@@ -21,19 +21,17 @@ jobs:
           python - <<'EOF'
           import zipfile, pathlib, os
 
-          tag          = os.environ["TAG"]
-          exclude_dirs = {".git", ".github", "__pycache__"}
-          exclude_files = {"dev_loader.py"}
-          out = f"StructTopOpt_Blender_{tag}.zip"
+          tag    = os.environ["TAG"]
+          source = pathlib.Path("source")
+          out    = f"StructTopOpt_Blender_{tag}.zip"
+          skip   = {"__pycache__"}
 
           with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
-              for f in pathlib.Path(".").rglob("*"):
-                  if set(f.parts) & exclude_dirs:
-                      continue
-                  if f.name in exclude_files or f.suffix == ".pyc":
+              for f in source.rglob("*"):
+                  if set(f.parts) & skip or f.suffix in {".pyc", ".blend", ".zip"}:
                       continue
                   if f.is_file():
-                      zf.write(f, pathlib.Path("StructTopOpt_Blender") / f)
+                      zf.write(f, f.relative_to(source))
           print(f"Created {out}")
           EOF
 
