@@ -1,7 +1,7 @@
 """
 Problem gathering — walk the scene, voxelize tagged objects, and produce a
 ProblemData for the solver. Raises ProblemError with a clear message when
-the scene isn't valid.  Overlap priority: support > property > load > domain.
+the scene isn't valid.  Overlap priority: support > load > property > domain.
 """
 
 from dataclasses import dataclass, field
@@ -137,11 +137,17 @@ def gather_problem(context) -> ProblemData:
             target_density=obj.topopt.property_target_density,
         ))
 
+    # Priority: support > load > property
     for lc in loads:
         lc.mask &= ~support_mask
-        for pr in property_regions:
-            if pr.target_density < 1e-6:
-                lc.mask &= ~pr.mask
+
+    combined_load_mask = np.zeros(grid.shape, dtype=bool)
+    for lc in loads:
+        combined_load_mask |= lc.mask
+
+    for pr in property_regions:
+        pr.mask &= ~support_mask
+        pr.mask &= ~combined_load_mask
 
     passive_solid = np.zeros(grid.shape, dtype=bool)
     passive_void  = np.zeros(grid.shape, dtype=bool)
