@@ -84,4 +84,19 @@ Click **Generate Mesh** to extract a smooth isosurface from the density field vi
 
 ## Examples
 
-TODO: Populate here with gif + explanations
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="media/bookshelf.gif" width="280"/><br/>
+      <em>An example of organic bookshelf generation</em>
+    </td>
+    <td align="center">
+      <img src="media/example2.gif" width="280"/><br/>
+      <em>description 2</em>
+    </td>
+    <td align="center">
+      <img src="media/example3.gif" width="280"/><br/>
+      <em> description 3</em>
+    </td>
+  </tr>
+</table>
