@@ -26,7 +26,7 @@ To be clear upfront regarding Blender implementation: this is *structural* topol
 3. Enable **Object: Structural Topology Optimization**.
 4. The panel appears in the **3D Viewport N-panel** under the **Struct Topo** tab.
 
-Dependencies (`scipy`, `scikit-image`) are installed automatically on first enable through pip.
+`scipy` is installed automatically on first enable through pip for instalation through github releases.
 
 ---
 
@@ -75,13 +75,14 @@ Run the solver with the **Solve** button. Progress is shown live — iteration c
 
 The **Threshold** slider controls which voxels are visible — only voxels with a density above the threshold are shown. At `0.8` you see the densest, most load-bearing material. Lowering it reveals transitional regions. The preview updates in real time as you drag the slider.
 
-Click **Generate Mesh** to extract a smooth isosurface from the density field via marching cubes, it wont be the best one but goo enough as a reference.
+Click **Generate Mesh** to extract a mesh from the density field. Voxel boundary quads are extracted with NumPy, then two Remesh modifier passes clean up the geometry, followed by Laplacian smoothing.
 
 | Option | Description |
 |---|---|
 | **Close Holes** | Fills open boundary edges to produce a watertight mesh. |
-| **Exclude Loads** | Lets the optimizer decide load voxel density rather than forcing them solid. |
-| **Passes** | Number of Laplacian smoothing passes applied after extraction. |
+| **Include Loads** | Forces load voxels solid in the extracted mesh. |
+| **Include Supports** | Forces support voxels solid in the extracted mesh. |
+| **Passes** | Number of Laplacian smoothing passes applied after remeshing. |
 | **Smooth** | Strength of each smoothing pass (`0` = off, `1` = maximum). |
 
 > I highly suggest modelling the geometry manually based on the voxel and meshing results due to the potential artifacts and non-optimal topology generation of the current state of the add-on.

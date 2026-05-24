@@ -16,8 +16,7 @@ import sys
 
 # (import_name, pip_install_name)
 REQUIRED = [
-    ("scipy",  "scipy"),
-    ("skimage", "scikit-image"),
+    ("scipy", "scipy"),
 ]
 
 

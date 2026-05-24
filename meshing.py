@@ -1,4 +1,4 @@
-"""Topology mesh generation via marching cubes on the optimised density field."""
+"""Topology mesh generation via voxel boundary extraction on the optimised density field."""
 
 import bmesh
 import bpy
@@ -9,31 +9,85 @@ from . import properties as props
 MESH_NAME = "TopOpt_Mesh"
 
 
+def _extract_surface(vol, threshold, vs, offset):
+    """
+    Vectorized voxel-boundary surface extraction using only NumPy + bmesh.
+
+    For every pair of adjacent voxels that straddle `threshold`, emit a quad
+    at the shared boundary face.  Winding is chosen so outward normals point
+    away from the solid (above-threshold) side.
+
+    Returns (verts, faces) arrays ready for from_pydata, or (None, None).
+    """
+    inside = vol >= threshold
+    quads = []
+
+    # X-axis crossings — boundary quad at x = (i+1)*vs
+    ix, jx, kx = np.where(inside[:-1, :, :] ^ inside[1:, :, :])
+    if len(ix):
+        x = (ix + 1) * vs
+        # CCW from +X gives a +X-pointing normal
+        corners = np.stack([
+            np.column_stack([x, jx       * vs, kx       * vs]),
+            np.column_stack([x, (jx + 1) * vs, kx       * vs]),
+            np.column_stack([x, (jx + 1) * vs, (kx + 1) * vs]),
+            np.column_stack([x, jx       * vs, (kx + 1) * vs]),
+        ], axis=1)
+        # Flip when the right (i+1) side is inside → outward normal becomes -X
+        flip = ~inside[ix, jx, kx]
+        corners[flip] = corners[flip, ::-1]
+        quads.append(corners)
+
+    # Y-axis crossings — boundary quad at y = (j+1)*vs
+    iy, jy, ky = np.where(inside[:, :-1, :] ^ inside[:, 1:, :])
+    if len(iy):
+        y = (jy + 1) * vs
+        corners = np.stack([
+            np.column_stack([iy       * vs, y, ky       * vs]),
+            np.column_stack([(iy + 1) * vs, y, ky       * vs]),
+            np.column_stack([(iy + 1) * vs, y, (ky + 1) * vs]),
+            np.column_stack([iy       * vs, y, (ky + 1) * vs]),
+        ], axis=1)
+        flip = ~inside[iy, jy, ky]
+        corners[flip] = corners[flip, ::-1]
+        quads.append(corners)
+
+    # Z-axis crossings — boundary quad at z = (k+1)*vs
+    iz, jz, kz = np.where(inside[:, :, :-1] ^ inside[:, :, 1:])
+    if len(iz):
+        z = (kz + 1) * vs
+        corners = np.stack([
+            np.column_stack([iz       * vs, jz       * vs, z]),
+            np.column_stack([(iz + 1) * vs, jz       * vs, z]),
+            np.column_stack([(iz + 1) * vs, (jz + 1) * vs, z]),
+            np.column_stack([iz       * vs, (jz + 1) * vs, z]),
+        ], axis=1)
+        flip = ~inside[iz, jz, kz]
+        corners[flip] = corners[flip, ::-1]
+        quads.append(corners)
+
+    if not quads:
+        return None, None
+
+    all_corners = np.concatenate(quads, axis=0)  # (F, 4, 3)
+    n_faces = len(all_corners)
+    verts = all_corners.reshape(-1, 3).astype(np.float32) + offset
+    faces = np.arange(n_faces * 4).reshape(n_faces, 4)
+    return verts, faces
+
+
 def generate(
     context,
     problem,
     density_3d,
     threshold=0.5,
-    include_supports=True,
     include_loads=True,
+    include_supports=True,
     close_holes=False,
     smooth_factor=0.5,
     smooth_iterations=5,
 ):
-    """Run marching cubes → hole-fill → smooth → return Blender mesh object.
-
-    Support voxels are always excluded from the mesh (they're constraints, not
-    design material). Load voxels are included at density=1 so the attachment
-    surface is always present; set include_full_loads=True to extend this to
-    the full load mesh volume even where it extends outside the domain.
-    """
-    try:
-        from skimage.measure import marching_cubes
-    except ImportError:
-        raise RuntimeError(
-            "scikit-image is not installed. "
-            "Reload the addon so it can install it automatically."
-        )
+    """Run boundary extraction → hole-fill → smooth → return Blender mesh object."""
 
     vs     = problem.voxel_size
     offset = problem.grid_offset_local
@@ -49,31 +103,9 @@ def generate(
         for lc in problem.loads:
             vol[lc.mask] = 1.0
 
-    # Guard: marching_cubes needs values both above and below the level.
-    level = float(np.clip(threshold,
-                          float(vol.min()) + 1e-6,
-                          float(vol.max()) - 1e-6))
-
-    # marching_cubes needs values both above and below the iso-level.
-    level = float(np.clip(threshold, float(vol.min()) + 1e-6, float(vol.max()) - 1e-6))
-
-    try:
-        verts, faces, normals, _ = marching_cubes(
-            vol,
-            level=level,
-            spacing=(vs, vs, vs),
-            gradient_direction='descent',
-            method='lewiner',
-            allow_degenerate=False,
-        )
-    except (ValueError, RuntimeError):
+    verts, faces = _extract_surface(vol, threshold, vs, offset)
+    if verts is None or len(verts) == 0 or len(faces) == 0:
         return None
-
-    if len(verts) == 0 or len(faces) == 0:
-        return None
-
-    # Shift from (spacing × index) space to domain-local coordinates.
-    verts = verts + offset.astype(np.float32)
 
     if MESH_NAME in bpy.data.objects:
         old = bpy.data.objects[MESH_NAME]
@@ -116,6 +148,23 @@ def generate(
         bm.free()
         mesh.update()
 
+    # Make obj active so modifier_apply works
+    prev_active = context.view_layer.objects.active
+    obj.select_set(True)
+    context.view_layer.objects.active = obj
+
+    mod = obj.modifiers.new("TopOpt_Remesh_Smooth", 'REMESH')
+    mod.mode = 'SMOOTH'
+    mod.octree_depth = 8
+    bpy.ops.object.modifier_apply(modifier=mod.name)
+
+    mod = obj.modifiers.new("TopOpt_Remesh_Voxel", 'REMESH')
+    mod.mode = 'VOXEL'
+    mod.voxel_size = vs * 0.6
+    bpy.ops.object.modifier_apply(modifier=mod.name)
+
+    context.view_layer.objects.active = prev_active
+
     if smooth_iterations > 0 and smooth_factor > 0:
         bm = bmesh.new()
         bm.from_mesh(mesh)
@@ -132,5 +181,8 @@ def generate(
         bm.to_mesh(mesh)
         bm.free()
         mesh.update()
+
+    obj.data.polygons.foreach_set("use_smooth", [True] * len(obj.data.polygons))
+    obj.data.update()
 
     return obj

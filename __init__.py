@@ -25,7 +25,7 @@ bl_info = {
 
 
 # Ensure user site-packages is on sys.path so pip-installed packages
-# (scipy, scikit-image, etc.) are importable inside Blender's Python.
+# (scipy, etc.) are importable inside Blender's Python.
 import site as _site, sys as _sys
 try:
     _user_site = _site.getusersitepackages()
