@@ -26,6 +26,9 @@ from mathutils import Vector
 # Preview cube size as a fraction of voxel size. 0.85 leaves visible gaps.
 _CUBE_FRACTION = 0.85
 
+# Set to True to invert the density grayscale (high density = black, low = white).
+_INVERT_DENSITY_COLORS = True
+
 # Role colors (RGBA, linear).
 _COLOR_DOMAIN  = (0.70, 0.70, 0.70, 0.05)  # near-ghost grey — just enough to see the boundary
 _COLOR_SUPPORT = (0.90, 0.15, 0.15, 1.0)   # red
@@ -227,6 +230,8 @@ def build_result_preview(context, problem, density, threshold=0.3):
     n_show = len(idx_i)
 
     rho_vals = np.clip(density[idx_i, idx_j, idx_k], 0.0, 1.0).astype(np.float32)
+    if _INVERT_DENSITY_COLORS:
+        rho_vals = 1.0 - rho_vals
     colors_arr = np.stack([rho_vals, rho_vals, rho_vals,
                            np.ones(n_show, dtype=np.float32)], axis=1)
 
