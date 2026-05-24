@@ -1,7 +1,7 @@
 # Structural Topology Optimization for Blender
 
 <div align="center">
-  <img src="media/thumbnail.gif"/>
+  <img src="media/thumbnail.gif" title="File available under /examples/Node.blend" alt="Thumbnail Node generation"/>
 </div>
 
 [![Latest Release](https://img.shields.io/github/v/release/emrgn-arch/StructTopOpt_Blender)](https://github.com/emrgn-arch/StructTopOpt_Blender/releases/latest)
