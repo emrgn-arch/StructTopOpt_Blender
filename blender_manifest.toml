@@ -1,0 +1,37 @@
+schema_version = "1.0.0"
+
+id            = "struct_topo_opt"
+version       = "0.3.3"
+name          = "Structural Topology Optimization"
+tagline       = "SIMP+OC structural topology optimization in the viewport"
+maintainer    = "Emre Ergin <emrgn.arch@gmail.com>"
+type          = "add-on"
+
+blender_version_min = "4.2.0"
+
+license = ["SPDX:MIT"]
+website = "https://github.com/emrgn-arch/StructTopOpt_Blender"
+tags    = ["Mesh", "Object", "Physics"]
+
+wheels = [
+    "./wheels/scipy-1.17.1-cp311-cp311-win_amd64.whl",
+    "./wheels/scipy-1.17.1-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+]
+
+[build]
+paths_exclude_pattern = [
+    "__pycache__/",
+    ".git/",
+    ".github/",
+    ".venv/",
+    "devZone/",
+    "media/",
+    "examples/",
+    "build/",
+    "dist/",
+    "*.pyc",
+    "*.zip",
+    "*.blend",
+    ".gitignore",
+    "README.md",
+]
