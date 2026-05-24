@@ -153,14 +153,31 @@ def generate(
     obj.select_set(True)
     context.view_layer.objects.active = obj
 
+    #Hard coded smoothing
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    for _ in range(6):
+        bmesh.ops.smooth_vert(
+            bm,
+            verts=bm.verts,
+            factor=0.7,
+            mirror_clip_x=False, mirror_clip_y=False, mirror_clip_z=False,
+            clip_dist=0.0,
+            use_axis_x=True, use_axis_y=True, use_axis_z=True,
+        )
+    bm.normal_update()
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.update()
+
     mod = obj.modifiers.new("TopOpt_Remesh_Smooth", 'REMESH')
     mod.mode = 'SMOOTH'
-    mod.octree_depth = 8
+    mod.octree_depth = 7
     bpy.ops.object.modifier_apply(modifier=mod.name)
 
     mod = obj.modifiers.new("TopOpt_Remesh_Voxel", 'REMESH')
     mod.mode = 'VOXEL'
-    mod.voxel_size = vs * 0.6
+    mod.voxel_size = vs * 0.5
     bpy.ops.object.modifier_apply(modifier=mod.name)
 
     context.view_layer.objects.active = prev_active
