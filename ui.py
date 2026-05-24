@@ -149,6 +149,9 @@ class TOPOPT_OT_solve_3d(Operator):
             if sp.solve_cancel_requested:
                 self._finish(context)
                 sp.solve_status = "Cancelled"
+                context.workspace.status_text_set(
+                    f"TopOpt  Cancelled  {sp.solve_iter_info}  {sp.solve_total_time_info}"
+                )
                 return {'CANCELLED'}
 
             t0 = time.time()
@@ -157,11 +160,16 @@ class TOPOPT_OT_solve_3d(Operator):
             except StopIteration:
                 self._finish(context)
                 sp.solve_status = "Max iterations reached"
+                context.workspace.status_text_set(
+                    f"TopOpt  Max iterations reached  {sp.solve_iter_info}  "
+                    f"{sp.solve_compliance_info}  {sp.solve_total_time_info}"
+                )
                 self._show_result(context)
                 return {'FINISHED'}
             except RuntimeError as err:
                 self._finish(context)
                 sp.solve_status = f"Error: {err}"
+                context.workspace.status_text_set(f"TopOpt  Error: {err}")
                 self.report({'ERROR'}, str(err))
                 return {'CANCELLED'}
 
@@ -177,6 +185,10 @@ class TOPOPT_OT_solve_3d(Operator):
                 sp.solve_status = (
                     f"Timed out: iteration took {_fmt(elapsed)} "
                     f"(limit {timeout}s). Reduce grid resolution."
+                )
+                context.workspace.status_text_set(
+                    f"TopOpt  Timed out  {sp.solve_iter_info}  "
+                    f"iter took {_fmt(elapsed)} (limit {timeout}s)"
                 )
                 return {'CANCELLED'}
 
@@ -194,8 +206,17 @@ class TOPOPT_OT_solve_3d(Operator):
             sp.solve_volume_info     = f"Vol={result.vol_frac:.3f}"
             sp.solve_change_info     = f"Δ={result.change:.5f}"
 
+            context.workspace.status_text_set(
+                f"TopOpt  {sp.solve_iter_info}  {sp.solve_compliance_info}  "
+                f"{sp.solve_change_info}  {sp.solve_total_time_info}     [ESC] Cancel"
+            )
+
             if result.converged:
                 self._finish(context)
+                context.workspace.status_text_set(
+                    f"TopOpt  Converged  {sp.solve_iter_info}  "
+                    f"{sp.solve_compliance_info}  {sp.solve_total_time_info}"
+                )
                 self._show_result(context)
                 self.report({'INFO'}, f"Converged in {result.iteration} iterations.")
                 return {'FINISHED'}
@@ -203,6 +224,9 @@ class TOPOPT_OT_solve_3d(Operator):
         elif event.type in {'ESC', 'RIGHTMOUSE'}:
             self._finish(context)
             sp.solve_status = "Cancelled"
+            context.workspace.status_text_set(
+                f"TopOpt  Cancelled  {sp.solve_iter_info}  {sp.solve_total_time_info}"
+            )
             self.report({'WARNING'}, "Solve cancelled.")
             return {'CANCELLED'}
 
@@ -263,6 +287,9 @@ class TOPOPT_OT_solve_3d(Operator):
         self._solve_start         = time.time()
 
         wm = context.window_manager
+        context.workspace.status_text_set(
+            f"TopOpt  Starting ({nx}×{ny}×{nz})     [ESC] Cancel"
+        )
         self._timer = wm.event_timer_add(0.05, window=context.window)
         wm.modal_handler_add(self)
         return {'RUNNING_MODAL'}
