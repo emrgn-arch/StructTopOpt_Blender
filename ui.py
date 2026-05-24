@@ -208,7 +208,7 @@ class TOPOPT_OT_solve_3d(Operator):
 
             context.workspace.status_text_set(
                 f"TopOpt  {sp.solve_iter_info}  {sp.solve_compliance_info}  "
-                f"{sp.solve_change_info}  {sp.solve_total_time_info}     [ESC] Cancel"
+                f"{sp.solve_change_info}  {sp.solve_time_info}  {sp.solve_total_time_info}     [ESC] Cancel"
             )
 
             if result.converged:
