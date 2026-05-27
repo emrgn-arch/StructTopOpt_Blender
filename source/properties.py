@@ -202,7 +202,7 @@ class TopOptSceneProps(PropertyGroup):
     iter_timeout_secs: IntProperty(
         name="Iter Timeout (s)",
         description="Cancel the solver if a single iteration takes longer than this many seconds",
-        default=60, min=10, max=3600,
+        default=30, min=5, max=3600,
     )
     oc_move_limit: FloatProperty(
         name="OC Move Limit",

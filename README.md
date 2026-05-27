@@ -5,7 +5,7 @@
 </div>
 
 [![Latest Release](https://img.shields.io/github/v/release/emrgn-arch/StructTopOpt_Blender)](https://github.com/emrgn-arch/StructTopOpt_Blender/releases/latest)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Blender](https://img.shields.io/badge/Blender-4.2%2B-orange.svg)](https://www.blender.org/download/)
 
 A Blender addon for early-stage structural topology optimization, intended as a tool for **geometry discovery** through analyzing applied loads, boundary conditions and material distribution within the given design space.
@@ -21,10 +21,12 @@ To be clear upfront regarding Blender implementation: this is *structural* topol
 
 ## Installation
 
-1. Download the latest `StructTopOpt_Blender_vX.X.X.zip` from [Releases](../../releases).
-2. In Blender: **Edit → Preferences → Add-ons → Install…**, select the zip.
-3. Enable **Object: Structural Topology Optimization**.
-4. The panel appears in the **3D Viewport N-panel** under the **Struct Topo** tab.
+1. Download the platform-specific zip for your OS from [Releases](../../releases):
+   - `StructTopOpt_Blender_vX.X.X_windows-x64.zip`
+   - `StructTopOpt_Blender_vX.X.X_linux-x64.zip`
+   - `StructTopOpt_Blender_vX.X.X_macos-arm64.zip`
+2. In Blender: **Edit → Preferences → Add-ons → Install from Disk…**, select the zip.
+3. The panel appears in the **3D Viewport N-panel** under the **Struct Topo** tab.
 
 `scipy` is bundled inside the zip — no extra installation required.
 
@@ -75,7 +77,7 @@ Run the solver with the **Solve** button. Progress is shown live — iteration c
 
 The **Threshold** slider controls which voxels are visible — only voxels with a density above the threshold are shown. At `0.8` you see the densest, most load-bearing material. Lowering it reveals transitional regions. The preview updates in real time as you drag the slider.
 
-Click **Generate Mesh** to extract a mesh from the density field. Voxel boundary quads are extracted with NumPy, then two Remesh modifier passes clean up the geometry, followed by Laplacian smoothing.
+Click **Generate Mesh** to extract a mesh from the density field. An isosurface is extracted from the density field using the Marching Cubes Lorensen algorithm (via [MarchingNumPy](https://github.com/alistairboyer/MarchingNumPy)), followed by a Smooth Remesh pass and optional Laplacian smoothing.
 
 | Option | Description |
 |---|---|
@@ -84,8 +86,6 @@ Click **Generate Mesh** to extract a mesh from the density field. Voxel boundary
 | **Include Supports** | Forces support voxels solid in the extracted mesh. |
 | **Passes** | Number of Laplacian smoothing passes applied after remeshing. |
 | **Smooth** | Strength of each smoothing pass (`0` = off, `1` = maximum). |
-
-> I highly suggest modelling the geometry manually based on the voxel and meshing results due to the potential artifacts and non-optimal topology generation of the current state of the add-on.
 
 ## Examples
 
@@ -105,3 +105,12 @@ Click **Generate Mesh** to extract a mesh from the density field. Voxel boundary
     </td>
   </tr>
 </table>
+
+## Acknowledgements
+
+- **[TopOpt_teach](https://github.com/MCM-QMUL/TopOpt_teach/tree/main)** — the 3D SIMP+OC solver this addon is based on.
+- **[MarchingNumPy](https://github.com/alistairboyer/MarchingNumPy)** by Alistair Boyer — pure-NumPy Marching Cubes Lorensen implementation used for mesh extraction.
+
+
+
+

@@ -250,6 +250,7 @@ class TOPOPT_OT_solve_3d(Operator):
         if preview.PREVIEW_NAME not in bpy.data.objects:
             self.report({'ERROR'}, "No preview mesh — run 'Voxelize & Preview' first.")
             return {'CANCELLED'}
+        bpy.data.objects[preview.PREVIEW_NAME].hide_set(False)
         try:
             p = problem.gather_problem(context)
         except Exception as e:
@@ -378,7 +379,7 @@ class TOPOPT_OT_cancel_confirm(Operator):
 class TOPOPT_OT_cancel_solve(Operator):
     """Stop the running solver after the current iteration finishes."""
     bl_idname = "topopt.cancel_solve"
-    bl_label = "Cancel Solver"
+    bl_label = "Cancel Solver  [ESC]"
     bl_options = {'REGISTER'}
 
     def execute(self, context):
