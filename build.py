@@ -4,7 +4,7 @@ Build platform-specific Blender extension zips for distribution.
 Usage:
     python build.py
 
-Output: dist/StructTopOpt_Blender_v{version}_{platform}.zip  (one per OS)
+Output: dist/struct_top_opt-{version}-{platform}.zip  (one per OS)
 Each zip gets a patched blender_manifest.toml listing only that OS's wheels.
 Wheels are auto-detected from source/wheels/ by filename pattern — just drop
 in cp313 (or any future Python version) wheels and they will be included.
@@ -20,9 +20,9 @@ WHEELS_DIR = SOURCE_DIR / "wheels"
 
 # Map Blender platform tag → wheel filename predicate
 PLATFORMS: dict[str, object] = {
-    "windows-x64": lambda n: "win_amd64" in n,
-    "linux-x64":   lambda n: "manylinux" in n,
-    "macos-arm64": lambda n: "macosx" in n and "arm64" in n,
+    "windows_x64": lambda n: "win_amd64" in n,
+    "linux_x64":   lambda n: "manylinux" in n,
+    "macos_arm64": lambda n: "macosx" in n and "arm64" in n,
 }
 
 SKIP_PARTS    = {"__pycache__"}
@@ -66,7 +66,7 @@ def build() -> None:
             continue
 
         patched = _patch_manifest(manifest_src, platform, wheels)
-        out     = OUTPUT_DIR / f"StructTopOpt_Blender_v{version}_{platform}.zip"
+        out     = OUTPUT_DIR / f"struct_top_opt-{version}-{platform}.zip"
 
         with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
             # Patched manifest goes in at the zip root

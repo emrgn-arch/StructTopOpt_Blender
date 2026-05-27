@@ -22,9 +22,9 @@ To be clear upfront regarding Blender implementation: this is *structural* topol
 ## Installation
 
 1. Download the platform-specific zip for your OS from [Releases](../../releases):
-   - `StructTopOpt_Blender_vX.X.X_windows-x64.zip`
-   - `StructTopOpt_Blender_vX.X.X_linux-x64.zip`
-   - `StructTopOpt_Blender_vX.X.X_macos-arm64.zip`
+   - `struct_top_opt-X.X.X-windows_x64.zip`
+   - `struct_top_opt-X.X.X-linux_x64.zip`
+   - `struct_top_opt-X.X.X-macos_arm64.zip`
 2. In Blender: **Edit → Preferences → Add-ons → Install from Disk…**, select the zip.
 3. The panel appears in the **3D Viewport N-panel** under the **Struct Topo** tab.
 
