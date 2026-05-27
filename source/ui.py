@@ -6,14 +6,17 @@ import bpy
 import numpy as np
 from bpy.types import Operator, Panel
 
-from . import dependencies
 from . import meshing
 from . import problem
 from . import preview
 from . import properties as props
 from . import results as res
 
-_scipy_ok = False  # cached at register() — avoids calling import_module on every redraw
+try:
+    import scipy as _scipy_check  # noqa: F401
+    _scipy_ok = True
+except ImportError:
+    _scipy_ok = False
 
 def _apply_transforms(context):
     """Apply rotation and scale on every tagged mesh before voxelization."""
@@ -565,8 +568,6 @@ CLASSES = (
 
 
 def register():
-    global _scipy_ok
-    _scipy_ok = dependencies.scipy_available()
     for cls in CLASSES:
         bpy.utils.register_class(cls)
 

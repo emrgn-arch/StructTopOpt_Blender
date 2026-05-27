@@ -14,7 +14,7 @@ Panel appears in the 3D viewport N-panel under the 'Struct Topo' tab.
 bl_info = {
     "name":        "Structural Topology Optimization",
     "author":      "Emre Ergin",
-    "version":     (0, 3, 9),
+    "version":     (0, 4, 0),
     "blender":     (4, 2, 0),
     "location":    "View3D > N-panel > Struct Topo",
     "description": "SIMP+OC structural topology optimisation with voxelized meshes",
@@ -24,17 +24,6 @@ bl_info = {
 }
 
 
-# Ensure user site-packages is on sys.path so pip-installed packages
-# (scipy, etc.) are importable inside Blender's Python.
-import site as _site, sys as _sys
-try:
-    _user_site = _site.getusersitepackages()
-    if _user_site not in _sys.path:
-        _sys.path.insert(0, _user_site)
-except Exception:
-    pass
-
-from . import dependencies
 from . import meshing    # noqa: F401
 from . import properties
 from . import voxelizer  # noqa: F401
@@ -45,13 +34,6 @@ from . import ui
 
 
 def register():
-    already_ok, err = dependencies.ensure_dependencies()
-    if err:
-        print(f"[Struct Topo] WARNING: dependency install failed: {err}")
-        print("[Struct Topo] Solver unavailable until dependencies are installed.")
-    elif not already_ok:
-        print("[Struct Topo] Dependencies installed. Reload the addon (run dev_loader again).")
-
     properties.register()
     ui.register()
 
