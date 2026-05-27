@@ -14,29 +14,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build addon zip
-        env:
-          TAG: ${{ github.ref_name }}
-        run: |
-          python - <<'EOF'
-          import zipfile, pathlib, os
-
-          tag    = os.environ["TAG"]
-          source = pathlib.Path("source")
-          out    = f"StructTopOpt_Blender_{tag}.zip"
-          skip   = {"__pycache__"}
-
-          with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
-              for f in source.rglob("*"):
-                  if set(f.parts) & skip or f.suffix in {".pyc", ".blend", ".zip"}:
-                      continue
-                  if f.is_file():
-                      zf.write(f, f.relative_to(source))
-          print(f"Created {out}")
-          EOF
+      - name: Build platform zips
+        run: python build.py
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: StructTopOpt_Blender_${{ github.ref_name }}.zip
+          files: dist/*.zip
           generate_release_notes: false

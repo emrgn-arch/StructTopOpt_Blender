@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id            = "struct_topo_opt"
-version       = "0.3.9"
+version       = "0.4.0"
 name          = "Structural Topology Optimization"
 tagline       = "SIMP+OC structural topology optimization in the viewport"
 maintainer    = "Emre Ergin <emrgn.arch@gmail.com>"
@@ -15,14 +15,19 @@ copyright  = [
     "2001-2024 SciPy Developers (bundled scipy wheel, BSD-3-Clause)",
 ]
 website = "https://github.com/emrgn-arch/StructTopOpt_Blender"
-tags    = ["Mesh", "Object", "Physics"]
+tags    = ["Mesh", "Physics"]
 
 platforms = ["windows-x64", "linux-x64", "macos-arm64"]
 
 wheels = [
+    # Python 3.11 — Blender 4.2–4.x
     "./wheels/scipy-1.11.4-cp311-cp311-win_amd64.whl",
     "./wheels/scipy-1.11.4-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
     "./wheels/scipy-1.11.4-cp311-cp311-macosx_12_0_arm64.whl",
+    # Python 3.13 — Blender 5.0+
+    "./wheels/scipy-1.17.1-cp313-cp313-win_amd64.whl",
+    "./wheels/scipy-1.16.3-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+    "./wheels/scipy-1.17.1-cp313-cp313-macosx_14_0_arm64.whl",
 ]
 
 [build]
