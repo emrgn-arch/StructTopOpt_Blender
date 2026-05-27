@@ -148,12 +148,6 @@ def generate(
         bm.free()
         mesh.update()
 
-    # Make obj active so modifier_apply works
-    prev_active = context.view_layer.objects.active
-    obj.select_set(True)
-    context.view_layer.objects.active = obj
-
-    #Hard coded smoothing
     bm = bmesh.new()
     bm.from_mesh(mesh)
     for _ in range(6):
@@ -170,17 +164,16 @@ def generate(
     bm.free()
     mesh.update()
 
-    mod = obj.modifiers.new("TopOpt_Remesh_Smooth", 'REMESH')
-    mod.mode = 'SMOOTH'
-    mod.octree_depth = 7
-    bpy.ops.object.modifier_apply(modifier=mod.name)
+    with bpy.context.temp_override(active_object=obj, selected_objects=[obj], object=obj):
+        mod = obj.modifiers.new("TopOpt_Remesh_Smooth", 'REMESH')
+        mod.mode = 'SMOOTH'
+        mod.octree_depth = 7
+        bpy.ops.object.modifier_apply(modifier=mod.name)
 
-    mod = obj.modifiers.new("TopOpt_Remesh_Voxel", 'REMESH')
-    mod.mode = 'VOXEL'
-    mod.voxel_size = vs * 0.5
-    bpy.ops.object.modifier_apply(modifier=mod.name)
-
-    context.view_layer.objects.active = prev_active
+        mod = obj.modifiers.new("TopOpt_Remesh_Voxel", 'REMESH')
+        mod.mode = 'VOXEL'
+        mod.voxel_size = vs * 0.5
+        bpy.ops.object.modifier_apply(modifier=mod.name)
 
     if smooth_iterations > 0 and smooth_factor > 0:
         bm = bmesh.new()

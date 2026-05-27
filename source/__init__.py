@@ -14,13 +14,13 @@ Panel appears in the 3D viewport N-panel under the 'Struct Topo' tab.
 bl_info = {
     "name":        "Structural Topology Optimization",
     "author":      "Emre Ergin",
-    "version":     (0, 3, 8),
+    "version":     (0, 3, 9),
     "blender":     (4, 2, 0),
     "location":    "View3D > N-panel > Struct Topo",
     "description": "SIMP+OC structural topology optimisation with voxelized meshes",
     "doc_url":     "https://github.com/emrgn-arch/StructTopOpt_Blender",
     "tracker_url": "https://github.com/emrgn-arch/StructTopOpt_Blender/issues",
-    "category":    "Object",
+    "category":    "Physics",
 }
 
 

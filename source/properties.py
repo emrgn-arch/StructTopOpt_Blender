@@ -113,9 +113,9 @@ def _apply_threshold(scene_props, context):
     except Exception:
         return
 
+    _prev.build_result_preview(context, p, density, scene_props.density_threshold)
+
     if _mesh.MESH_NAME in _bpy.data.objects:
-        if _prev.PREVIEW_NAME in _bpy.data.objects:
-            _bpy.data.objects[_prev.PREVIEW_NAME].hide_set(True)
         _mesh.generate(
             context, p, density,
             threshold         = scene_props.density_threshold,
@@ -125,8 +125,6 @@ def _apply_threshold(scene_props, context):
             smooth_factor     = scene_props.mesh_smooth_factor,
             smooth_iterations = scene_props.mesh_smooth_iterations,
         )
-    else:
-        _prev.build_result_preview(context, p, density, scene_props.density_threshold)
 
 
 class TopOptObjectProps(PropertyGroup):

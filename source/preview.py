@@ -247,9 +247,11 @@ def build_result_preview(context, problem, density, threshold=0.3):
     is_support = problem.support_mask[idx_i, idx_j, idx_k]
     colors_arr[is_support] = _COLOR_SUPPORT
 
-    # Replace preview mesh geometry.
+    # Replace preview mesh geometry, preserving the user's hidden state.
+    was_hidden = False
     if PREVIEW_NAME in bpy.data.objects:
         old = bpy.data.objects[PREVIEW_NAME]
+        was_hidden = old.hide_get()
         old_mesh = old.data
         bpy.data.objects.remove(old, do_unlink=True)
         if old_mesh.users == 0:
@@ -283,6 +285,10 @@ def build_result_preview(context, problem, density, threshold=0.3):
         obj.matrix_parent_inverse.identity()  # let parent transform propagate correctly
 
     _ensure_vertex_color_material(obj)
+
+    if was_hidden:
+        obj.hide_set(True)
+
     return obj
 
 
