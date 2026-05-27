@@ -142,7 +142,7 @@ class TopOptObjectProps(PropertyGroup):
     domain_target_density: FloatProperty(
         name="Target Density",
         description="Fraction of the domain to keep as material (volume fraction)",
-        default=0.3, min=0.01, max=0.99, subtype='FACTOR',
+        default=0.25, min=0.01, max=0.99, subtype='FACTOR',
     )
     domain_youngs_modulus: FloatProperty(
         name="Young's Modulus (GPa)",
@@ -178,7 +178,7 @@ class TopOptSceneProps(PropertyGroup):
     voxel_size: FloatProperty(
         name="Voxel Size",
         description="Edge length of each voxel in scene units",
-        default=0.1, min=0.001, soft_min=0.01, soft_max=1.0,
+        default=0.20, min=0.001, soft_min=0.01, soft_max=1.0,
         precision=3, unit='LENGTH',
     )
     penalty: FloatProperty(
@@ -224,7 +224,7 @@ class TopOptSceneProps(PropertyGroup):
     density_threshold: FloatProperty(
         name="Threshold",
         description="Hide voxels below this density in the result view",
-        default=0.8, min=0.0, max=1.0, subtype='FACTOR',
+        default=0.7, min=0.0, max=1.0, subtype='FACTOR',
         update=lambda self, ctx: _apply_threshold(self, ctx),
     )
     grid_domain_voxels: IntProperty(default=0)
