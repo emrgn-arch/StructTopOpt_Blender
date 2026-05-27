@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id            = "struct_topo_opt"
-version       = "0.4.0"
+version       = "0.4.2"
 name          = "Structural Topology Optimization"
 tagline       = "SIMP+OC structural topology optimization in the viewport"
 maintainer    = "Emre Ergin <emrgn.arch@gmail.com>"
