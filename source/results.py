@@ -1,9 +1,4 @@
-"""Density result cache and preview color update."""
-
-import bpy
-import numpy as np
-
-from .preview import PREVIEW_NAME, _COLOR_SUPPORT, _COLOR_LOAD, _COLOR_KEEP
+"""Density result cache."""
 
 _cached_density = None
 

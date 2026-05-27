@@ -5,7 +5,6 @@ the scene isn't valid.  Overlap priority: support > load > property > domain.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Tuple
 
 import numpy as np
 
@@ -32,7 +31,7 @@ class PropertyRegion:
 class ProblemData:
     """Everything the solver needs. Contains no bpy references."""
     voxel_size: float
-    shape: Tuple[int, int, int]
+    shape: tuple[int, int, int]
     grid_offset_local: np.ndarray
 
     domain_mask: np.ndarray
@@ -41,8 +40,8 @@ class ProblemData:
     poissons_ratio: float
 
     support_mask: np.ndarray
-    loads: List[LoadCase] = field(default_factory=list)
-    property_regions: List[PropertyRegion] = field(default_factory=list)
+    loads: list[LoadCase] = field(default_factory=list)
+    property_regions: list[PropertyRegion] = field(default_factory=list)
 
     passive_solid_mask: np.ndarray = None
     passive_void_mask: np.ndarray = None
@@ -113,7 +112,7 @@ def gather_problem(context) -> ProblemData:
     # Voxelize each load object once (unclipped), then derive both the
     # clipped LoadCase mask and the full_load_mask from the same result.
     full_load_mask = np.zeros(grid.shape, dtype=bool)
-    loads: List[LoadCase] = []
+    loads: list[LoadCase] = []
     for obj in by_role[props.ROLE_LOAD]:
         full_mask = vox.voxelize_role(grid, obj, depsgraph, clip_to_domain=False)
         full_load_mask |= full_mask
@@ -128,7 +127,7 @@ def gather_problem(context) -> ProblemData:
             total_force_kN=obj.topopt.load_total_force_kN,
         ))
 
-    property_regions: List[PropertyRegion] = []
+    property_regions: list[PropertyRegion] = []
     for obj in by_role[props.ROLE_PROPERTY]:
         mask = vox.voxelize_role(grid, obj, depsgraph)
         property_regions.append(PropertyRegion(

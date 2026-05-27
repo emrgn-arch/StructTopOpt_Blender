@@ -73,8 +73,6 @@ class TOPOPT_OT_voxelize_preview(Operator):
     )
 
     def execute(self, context):
-        # Apply rotation and scale to all tagged meshes before voxelizing.
-        # This ensures the BVH geometry matches what the user sees.
         _apply_transforms(context)
 
         try:
@@ -118,9 +116,6 @@ class TOPOPT_OT_toggle_sources(Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        # Find tagged meshes and figure out the current state — if any are
-        # hidden, we show all; otherwise we hide all. (Mixed state defaults to
-        # 'show all' which is the more recoverable direction.)
         tagged = [o for o in context.scene.objects
                   if o.type == 'MESH' and o.topopt.role != props.ROLE_NONE]
         if not tagged:
@@ -326,8 +321,6 @@ class TOPOPT_OT_solve_3d(Operator):
 
 
 
-
-
 class TOPOPT_OT_generate_mesh(Operator):
     """Generate a smooth topology mesh from the optimised density field."""
     bl_idname = "topopt.generate_mesh"
@@ -383,7 +376,7 @@ class TOPOPT_OT_cancel_confirm(Operator):
 
 
 class TOPOPT_OT_cancel_solve(Operator):
-    """Stop the running 2-D solver after the current iteration finishes."""
+    """Stop the running solver after the current iteration finishes."""
     bl_idname = "topopt.cancel_solve"
     bl_label = "Cancel Solver"
     bl_options = {'REGISTER'}
@@ -413,10 +406,6 @@ class TOPOPT_OT_print_summary(Operator):
         return {'FINISHED'}
 
 
-# ---------------------------------------------------------------------------
-# Panel
-# ---------------------------------------------------------------------------
-
 class TOPOPT_PT_main(Panel):
     bl_label      = "Structural Topology Optimization"
     bl_idname     = "TOPOPT_PT_main"
@@ -429,7 +418,6 @@ class TOPOPT_PT_main(Panel):
         scene = context.scene
         obj = context.active_object
 
-        # ----- Selected object role -----
         box = layout.box()
         box.label(text="Selected Object", icon='OBJECT_DATA')
         if obj is None or obj.type != 'MESH':
@@ -452,16 +440,12 @@ class TOPOPT_PT_main(Panel):
             elif role == props.ROLE_PROPERTY:
                 col = box.column(align=True)
                 col.prop(obj.topopt, "property_target_density")
-            # ROLE_SUPPORT has no extra fields; the mesh itself is the data.
-            # ROLE_NONE: nothing to show.
-
-        # ----- Voxel Grid -----
         box = layout.box()
         box.label(text="Voxel Grid", icon='MOD_REMESH')
         box.prop(scene.topopt, "voxel_size")
         if scene.topopt.grid_info:
             box.label(text=scene.topopt.grid_info)
-        # ----- Model Actions -----
+
         box = layout.box()
         box.label(text="Model Actions", icon='MESH_CUBE')
         box.operator("topopt.voxelize_preview", icon='MESH_GRID')
@@ -480,7 +464,6 @@ class TOPOPT_PT_main(Panel):
         row.operator("topopt.toggle_sources", text="Show/Hide Sources", icon='HIDE_OFF')
         row.operator("topopt.print_summary",  text="Summary", icon='TEXT')
 
-        # ----- Solver -----
         box = layout.box()
         box.label(text="Solver", icon='SETTINGS')
 

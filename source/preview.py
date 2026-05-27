@@ -1,26 +1,10 @@
-"""
-Preview mesh generation — visualize the voxelized problem as colored cubes.
-
-We build a single mesh containing one small cube per "interesting" voxel
-(supports = red, loads = blue, domain-only = grey). Cubes are smaller than
-the voxel size so adjacent voxels are visually distinguishable.
-
-Why one big mesh rather than instancing? Because:
-  1. Instancing in Blender via geometry nodes would require setting up a node
-     tree at runtime — fragile across Blender versions.
-  2. A single mesh with vertex colors renders instantly and is portable.
-  3. For Phase A grids (<100³ with most voxels empty) the cube count is small
-     enough that mesh size is a non-issue. A 60³ grid with 30% filled = 65k
-     cubes = 520k verts. Blender handles this comfortably.
-
-For huge grids in Phase C+ we can switch to a Volume object or geometry nodes,
-but Phase A keeps it simple.
-"""
+"""Preview mesh generation — colored voxel cubes visualizing the optimized density field."""
 
 import bmesh
 import bpy
 import numpy as np
-from mathutils import Vector
+
+from . import properties as props
 
 
 # Preview cube size as a fraction of voxel size. 0.85 leaves visible gaps.
@@ -155,16 +139,12 @@ def build_preview_mesh(context, problem, show_domain=True):
     bm.free()
     mesh.update()
 
-    # Parent to the domain so the preview moves with the domain mesh.
-    # Find the domain (re-scanning is fine; this is once per voxelize).
-    from . import properties as props
     domain = next((o for o in context.scene.objects
                    if o.type == 'MESH' and o.topopt.role == props.ROLE_DOMAIN), None)
     if domain is not None:
         obj.parent = domain
-        obj.matrix_parent_inverse.identity()  # let parent transform propagate correctly
+        obj.matrix_parent_inverse.identity()
 
-    # Set viewport shading to use vertex color by adding a simple material.
     _ensure_vertex_color_material(obj)
 
     return obj
@@ -191,11 +171,17 @@ def _ensure_vertex_color_material(obj):
     for n in list(nt.nodes):
         nt.nodes.remove(n)
 
-    attr   = nt.nodes.new('ShaderNodeAttribute');  attr.attribute_name = "Col";  attr.location = (-400, 0)
-    emit   = nt.nodes.new('ShaderNodeEmission');                                 emit.location  = (-100, 80)
-    transp = nt.nodes.new('ShaderNodeBsdfTransparent');                          transp.location = (-100, -80)
-    mix    = nt.nodes.new('ShaderNodeMixShader');                                mix.location   = (150, 0)
-    out    = nt.nodes.new('ShaderNodeOutputMaterial');                           out.location   = (380, 0)
+    attr = nt.nodes.new('ShaderNodeAttribute')
+    attr.attribute_name = "Col"
+    attr.location = (-400, 0)
+    emit = nt.nodes.new('ShaderNodeEmission')
+    emit.location = (-100, 80)
+    transp = nt.nodes.new('ShaderNodeBsdfTransparent')
+    transp.location = (-100, -80)
+    mix = nt.nodes.new('ShaderNodeMixShader')
+    mix.location = (150, 0)
+    out = nt.nodes.new('ShaderNodeOutputMaterial')
+    out.location = (380, 0)
 
     nt.links.new(attr.outputs['Color'], emit.inputs['Color'])
     nt.links.new(attr.outputs['Alpha'], mix.inputs['Fac'])   # alpha → opaque blend
@@ -217,15 +203,12 @@ def build_result_preview(context, problem, density, threshold=0.3):
     vs     = problem.voxel_size
     offset = problem.grid_offset_local
 
-    # Precompute combined load mask (vectorised, done once).
     load_mask = np.zeros(problem.shape, dtype=bool)
     for lc in problem.loads:
         load_mask |= lc.mask
 
-    # Voxels to show: above threshold OR support OR load.
     show = (density > threshold) | problem.support_mask | load_mask
 
-    # Precompute per-voxel colors (vectorised) before the bmesh loop.
     idx_i, idx_j, idx_k = np.where(show)
     n_show = len(idx_i)
 
@@ -247,7 +230,6 @@ def build_result_preview(context, problem, density, threshold=0.3):
     is_support = problem.support_mask[idx_i, idx_j, idx_k]
     colors_arr[is_support] = _COLOR_SUPPORT
 
-    # Replace preview mesh geometry, preserving the user's hidden state.
     was_hidden = False
     if PREVIEW_NAME in bpy.data.objects:
         old = bpy.data.objects[PREVIEW_NAME]
@@ -277,12 +259,11 @@ def build_result_preview(context, problem, density, threshold=0.3):
     bm.free()
     mesh.update()
 
-    from . import properties as props
     domain = next((o for o in context.scene.objects
                    if o.type == 'MESH' and o.topopt.role == props.ROLE_DOMAIN), None)
     if domain is not None:
         obj.parent = domain
-        obj.matrix_parent_inverse.identity()  # let parent transform propagate correctly
+        obj.matrix_parent_inverse.identity()
 
     _ensure_vertex_color_material(obj)
 

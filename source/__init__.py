@@ -2,12 +2,10 @@
 Structural Topology Optimization for Blender
 =============================================
 
-Define a structural problem by tagging meshes as domain / load / support /
-property region, voxelize, solve with 3-D SIMP+OC, and extract a smooth
-isosurface mesh of the optimised topology.
+Tag meshes as domain / load / support / property region, voxelize, solve
+with 3-D SIMP+OC, and extract a smooth mesh of the optimised topology.
 
-Install: zip this folder, Edit → Preferences → Add-ons → Install...
-Then enable "Object: Structural Topology Optimization".
+Install via Blender's Extensions Manager (Edit → Preferences → Get Extensions).
 Panel appears in the 3D viewport N-panel under the 'Struct Topo' tab.
 """
 
