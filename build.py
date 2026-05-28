@@ -20,9 +20,9 @@ WHEELS_DIR = SOURCE_DIR / "wheels"
 
 # Map Blender platform tag → wheel filename predicate
 PLATFORMS: dict[str, object] = {
-    "windows_x64": lambda n: "win_amd64" in n,
-    "linux_x64":   lambda n: "manylinux" in n,
-    "macos_arm64": lambda n: "macosx" in n and "arm64" in n,
+    "windows-x64": lambda n: "win_amd64" in n,
+    "linux-x64":   lambda n: "manylinux" in n,
+    "macos-arm64": lambda n: "macosx" in n and "arm64" in n,
 }
 
 SKIP_PARTS    = {"__pycache__"}
