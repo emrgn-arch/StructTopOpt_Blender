@@ -66,7 +66,7 @@ def build() -> None:
             continue
 
         patched = _patch_manifest(manifest_src, platform, wheels)
-        out     = OUTPUT_DIR / f"struct_top_opt-{version}-{platform}.zip"
+        out     = OUTPUT_DIR / f"struct_top_opt-{version}-{platform.replace('-', '_')}.zip"
 
         with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
             # Patched manifest goes in at the zip root
