@@ -4,7 +4,7 @@ Build platform-specific Blender extension zips for distribution.
 Usage:
     python build.py
 
-Output: dist/struct_top_opt-{version}-{platform}.zip  (one per OS)
+Output: dist/add-on-{id}-v{version}-{platform}.zip  (one per OS)
 Each zip gets a patched blender_manifest.toml listing only that OS's wheels.
 Wheels are auto-detected from source/wheels/ by filename pattern — just drop
 in cp313 (or any future Python version) wheels and they will be included.
@@ -34,6 +34,11 @@ def _get_version(manifest: str) -> str:
     return m.group(1) if m else "0.0.0"
 
 
+def _get_id(manifest: str) -> str:
+    m = re.search(r'^id\s*=\s*"([^"]+)"', manifest, re.MULTILINE)
+    return m.group(1).replace("_", "-") if m else "extension"
+
+
 def _patch_manifest(manifest: str, platform: str, wheels: list[str]) -> str:
     manifest = re.sub(
         r'^platforms\s*=\s*\[.*?\]',
@@ -54,6 +59,7 @@ def build() -> None:
 
     manifest_src = (SOURCE_DIR / "blender_manifest.toml").read_text(encoding="utf-8")
     version      = _get_version(manifest_src)
+    ext_id       = _get_id(manifest_src)
     all_wheels   = sorted(f.name for f in WHEELS_DIR.glob("*.whl"))
 
     if not all_wheels:
@@ -66,7 +72,7 @@ def build() -> None:
             continue
 
         patched = _patch_manifest(manifest_src, platform, wheels)
-        out     = OUTPUT_DIR / f"struct_top_opt-{version}-{platform.replace('-', '_')}.zip"
+        out     = OUTPUT_DIR / f"add-on-{ext_id}-v{version}-{platform}.zip"
 
         with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
             # Patched manifest goes in at the zip root
