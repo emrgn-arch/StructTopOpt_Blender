@@ -13,9 +13,7 @@ A Blender addon for early-stage structural topology optimization, intended as a 
 
 Inspired by [TopOpt_teach](https://github.com/MCM-QMUL/TopOpt_teach/tree/main), the addon implements a simplified 3D SIMP (Solid Isotropic Material with Penalization) solver and wraps it in Blender's 3D viewport — so you can sketch a design space, tag loads and supports on regular meshes, and quickly visualize where material "wants" to be in a voxelized manner. The aim is to give designers and curious tinkerers a low-friction way to *see* candidate shapes early in a process, without relying on closed or commercially available topology optimization software.
 
-To be clear upfront regarding Blender implementation: this is *structural* topology optimization — finding where material should go inside a design domain to carry given loads — not **mesh topology** editing in the Blender sense (edge flow, retopology, etc.). Blender isn't traditionally a place where this kind of FEA-adjacent solver lives, which is exactly what made it an interesting experiment: its python scripting and viewport/modelling make it easy to sketch a design space and visualize results, even if it was never built with solvers in mind.
-
-> 💡 Structural mechanics isn't my domain, so treat results as visual sketches rather than verified designs — verify anything load-bearing with proper FEA tools. The solver also runs on CPU for now, so larger grids can get slow depending on the hardware.
+To be clear upfront regarding Blender implementation: this is *structural* topology optimization — finding where material should go inside a design domain to carry given loads — not **mesh topology** editing in the Blender sense (edge flow, retopology, etc.). Blender isn't traditionally a place where this kind of FEA-adjacent solver lives, which is exactly what made it an interesting experiment. Structural mechanics isn't my domain, so treat results as visual sketches rather than verified designs — verify anything load-bearing with proper FEA tools. 
 
 ---
 
@@ -44,13 +42,11 @@ Tag regular Blender mesh objects with roles from the **Struct Topo** panel. Each
 | **Property Region** | Yellow | Voxels constrained to a fixed density. *Target Density*: `1.0` = force solid, `0.0` = force void. |
 
 
-Once roles are assigned, set the **Voxel Size** and click **Voxelize & Preview**. The viewport switches to Material Preview and shows the voxelized domain as colored cubes. A DOF count and potential warning will be visible if the grid is large enough to make solving slow. (for now)
+Once roles are assigned, set the **Voxel Size** and click **Voxelize & Preview**. The viewport switches to Material Preview and shows the voxelized domain as colored cubes (transforms are applied to meshes in this stage). A DOF count and potential warning will be visible if the grid is large enough to make solving slow. (for now)
 
 <div align="center">
   <img src="media/modelsetup.gif" width="500"/>
 </div>
-
-> Just to keep in mind, all transformations are applied to the selected geometries at voxelization.
 
 ---
 
@@ -64,7 +60,7 @@ Run the solver with the **Solve** button. Progress is shown live — iteration c
 | **Filter Radius** | `1.5` voxels | Smoothing radius for sensitivity filtering. Prevents checkerboard patterns. Increase if results look noisy. |
 | **Max Iterations** | `80` | Hard stop if convergence isn't reached. |
 | **Convergence Tol** | `0.01` | Stops when the maximum density change between iterations drops below this value. |
-| **Iter Timeout** | `60` s | Cancels the solve if a single iteration exceeds this duration. Reduce grid resolution if this triggers. |
+| **Iter Timeout** | `30` s | Cancels the solve if a single iteration exceeds this duration. Reduce grid resolution if this triggers. |
 | **OC Move Limit** | `0.2` | Maximum density change allowed per OC step. Lower is more stable; higher converges faster but can oscillate. |
 
 <div align="center">
