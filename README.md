@@ -105,7 +105,8 @@ Click **Generate Mesh** to extract a mesh from the density field. An isosurface 
 ## Acknowledgements
 
 - **[TopOpt_teach](https://github.com/MCM-QMUL/TopOpt_teach/tree/main)** — the 3D SIMP+OC solver this addon is based on.
-- **[MarchingNumPy](https://github.com/alistairboyer/MarchingNumPy)** by Alistair Boyer — pure-NumPy Marching Cubes Lorensen implementation used for mesh extraction.
+- **[MarchingNumPy](https://github.com/alistairboyer/MarchingNumPy)** by Alistair Boyer — pure-NumPy Marching Cubes Lorensen implementation used for mesh extraction. MIT License.
+- **[SciPy](https://scipy.org)** — sparse linear algebra used by the FEM solver, bundled with the extension. BSD-3-Clause License.
 
 
 
