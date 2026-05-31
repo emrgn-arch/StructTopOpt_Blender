@@ -40,9 +40,10 @@ def generate(
     if raw_verts is None or len(raw_verts) == 0 or len(faces) == 0:
         return None
 
-    # marching_cubes_lorensen returns float16 positions in voxel-index space;
-    # scale to world space here.
-    verts = raw_verts.astype(np.float32) * vs + offset
+    # marching_cubes_lorensen returns positions in voxel-index space where index i
+    # sits at the corner between voxels i-1 and i. Our voxel centres live at
+    # offset + (i + 0.5) * vs, so add the half-voxel shift to align with preview.
+    verts = raw_verts.astype(np.float32) * vs + offset + np.float32(vs * 0.5)
 
     if MESH_NAME in bpy.data.objects:
         old = bpy.data.objects[MESH_NAME]
