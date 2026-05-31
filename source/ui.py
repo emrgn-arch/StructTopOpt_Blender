@@ -22,6 +22,193 @@ except ImportError:
 def _fmt(s):
     return f"{int(s // 60)}m {s % 60:.0f}s" if s >= 60 else f"{s:.1f}s"
 
+
+# ── minimal 4×6 bitmap font (bit 3 = leftmost column) ───────────────────────
+_GLYPHS = {
+    '0':[0b0110,0b1010,0b1010,0b1010,0b1010,0b0110],
+    '1':[0b0100,0b1100,0b0100,0b0100,0b0100,0b1110],
+    '2':[0b0110,0b0010,0b0110,0b1000,0b1000,0b1110],
+    '3':[0b1110,0b0010,0b0110,0b0010,0b0010,0b1110],
+    '4':[0b1010,0b1010,0b1110,0b0010,0b0010,0b0010],
+    '5':[0b1110,0b1000,0b1110,0b0010,0b0010,0b1110],
+    '6':[0b0110,0b1000,0b1110,0b1010,0b1010,0b0110],
+    '7':[0b1110,0b0010,0b0010,0b0100,0b0100,0b0100],
+    '8':[0b0110,0b1010,0b0110,0b1010,0b1010,0b0110],
+    '9':[0b0110,0b1010,0b0110,0b0010,0b0010,0b0110],
+    '.':[0b0000,0b0000,0b0000,0b0000,0b0110,0b0110],
+    '-':[0b0000,0b0000,0b1110,0b0000,0b0000,0b0000],
+    'k':[0b1000,0b1010,0b1100,0b1010,0b1010,0b1010],
+    'C':[0b0110,0b1000,0b1000,0b1000,0b1000,0b0110],
+    'D':[0b1100,0b1010,0b1010,0b1010,0b1010,0b1100],
+    'V':[0b1010,0b1010,0b1010,0b1010,0b1010,0b0100],
+    'T':[0b1110,0b0100,0b0100,0b0100,0b0100,0b0100],
+    'o':[0b0000,0b0000,0b0110,0b1010,0b1010,0b0110],
+    'm':[0b0000,0b0000,0b1010,0b1110,0b1010,0b1010],
+    'p':[0b0000,0b0000,0b1110,0b1010,0b1110,0b1000],
+    'e':[0b0000,0b0000,0b0110,0b1110,0b1000,0b0110],
+    'l':[0b1000,0b1000,0b1000,0b1000,0b1000,0b0110],
+    't':[0b0100,0b1110,0b0100,0b0100,0b0100,0b0010],
+    'a':[0b0000,0b0000,0b0110,0b1110,0b1010,0b0110],
+    'i':[0b0100,0b0000,0b0100,0b0100,0b0100,0b0100],
+    'n':[0b0000,0b0000,0b1100,0b1010,0b1010,0b1010],
+    'r':[0b0000,0b0000,0b1010,0b1100,0b1000,0b1000],
+    ' ':[0b0000,0b0000,0b0000,0b0000,0b0000,0b0000],
+}
+_GW = 4
+
+_GRAPH_IMAGE_NAME = "TopOpt_Metrics"
+
+
+def _fmt_val(v):
+    a = abs(v)
+    if a >= 1e5:  return f"{v / 1e3:.0f}k"
+    if a >= 1000: return f"{v:.0f}"
+    if a >= 100:  return f"{v:.1f}"
+    if a >= 10:   return f"{v:.2f}"
+    return f"{v:.3f}"
+
+
+def _draw_str(canvas, text, tx, ty, color, H, W, scale=1):
+    """Draw text. tx/ty = top-left in top-down screen coords (ty=0 is image top).
+    Each glyph pixel is rendered as a scale×scale block."""
+    cx = tx
+    for ch in str(text):
+        rows = _GLYPHS.get(ch, _GLYPHS[' '])
+        for r, bits in enumerate(rows):
+            for sr in range(scale):
+                cy = H - 1 - (ty + r * scale + sr)
+                if 0 <= cy < H:
+                    for c in range(_GW):
+                        if bits & (1 << (_GW - 1 - c)):
+                            for sc in range(scale):
+                                px = cx + c * scale + sc
+                                if 0 <= px < W:
+                                    canvas[cy, px] = color
+        cx += (_GW + 1) * scale
+    return cx
+
+
+def _draw_str_right(canvas, text, rx, ty, color, H, W, scale=1):
+    """Draw text right-aligned so the last pixel lands at x = rx."""
+    tx = rx - len(text) * (_GW + 1) * scale + scale
+    _draw_str(canvas, text, max(0, tx), ty, color, H, W, scale)
+
+
+def _show_compliance_graph(c_hist, d_hist=None, v_hist=None, t_hist=None):
+    """Square 4-panel solver metrics graph rendered as a Blender image."""
+    n = len(c_hist)
+    if n < 2:
+        return
+
+    d_hist = d_hist or [0.0] * n
+    v_hist = v_hist or [0.0] * n
+    t_hist = t_hist or [0.0] * n
+
+    W          = 1024
+    FONT_SCALE = 3
+    FONT_H     = 6 * FONT_SCALE          # glyph height in pixels
+    CHAR_W     = (_GW + 1) * FONT_SCALE  # per-character stride in pixels
+    PAD_L   = 6 * CHAR_W + 8  # fits 6-char y-axis labels with margin
+    PAD_R   = 10
+    PAD_T   = 10
+    PAD_B   = 6
+    XAXIS_H = FONT_H + 10     # tick labels + breathing room
+    GAP     = 5
+    n_panels = 4
+    # Compute PANEL_H so that H ≈ W (square image)
+    PANEL_H = (W - PAD_T - (n_panels - 1) * GAP - XAXIS_H - PAD_B) // n_panels
+    H       = PAD_T + n_panels * PANEL_H + (n_panels - 1) * GAP + XAXIS_H + PAD_B
+    pw      = W - PAD_L - PAD_R
+
+    panels = [
+        (c_hist, np.array([0.18, 0.42, 0.78, 1.0], dtype=np.float32), "Comp"),
+        (d_hist, np.array([0.90, 0.50, 0.10, 1.0], dtype=np.float32), "Delt"),
+        (v_hist, np.array([0.20, 0.70, 0.30, 1.0], dtype=np.float32), "Vol"),
+        (t_hist, np.array([0.65, 0.20, 0.70, 1.0], dtype=np.float32), "Time"),
+    ]
+
+    canvas  = np.ones((H, W, 4), dtype=np.float32)
+    DARK    = np.array([0.15, 0.15, 0.15, 1.0], dtype=np.float32)
+    MUTED   = np.array([0.50, 0.50, 0.50, 1.0], dtype=np.float32)
+
+    def panel_bot(i):          # i=0 → top (Comp), i=3 → bottom (Time)
+        return PAD_B + XAXIS_H + (n_panels - 1 - i) * (PANEL_H + GAP)
+
+    for i, (data, color, label) in enumerate(panels):
+        yb = panel_bot(i)
+        yt = yb + PANEL_H
+
+        canvas[yb:yt, PAD_L:W - PAD_R, :3] = 0.93
+        for frac in (0.25, 0.5, 0.75):
+            gy = yb + int(frac * PANEL_H)
+            if gy < yt:
+                canvas[gy, PAD_L:W - PAD_R, :3] = 0.80
+
+        d_min, d_max = min(data), max(data)
+        if d_max == d_min:
+            d_max = d_min + 1.0
+
+        for j in range(n - 1):
+            x0 = PAD_L + int(j       / (n - 1) * pw)
+            x1 = PAD_L + int((j + 1) / (n - 1) * pw)
+            y0 = yb + int((data[j]     - d_min) / (d_max - d_min) * (PANEL_H - 1))
+            y1 = yb + int((data[j + 1] - d_min) / (d_max - d_min) * (PANEL_H - 1))
+            steps = max(abs(x1 - x0), abs(y1 - y0), 1)
+            for s in range(steps + 1):
+                frac = s / steps
+                cx = int(x0 + frac * (x1 - x0))
+                cy = int(y0 + frac * (y1 - y0))
+                for dy in (-2, -1, 0, 1, 2):
+                    for dx in (-2, -1, 0, 1, 2):
+                        px, py = cx + dx, cy + dy
+                        if PAD_L <= px < W - PAD_R and yb <= py < yt:
+                            canvas[py, px] = color
+
+        # panel label inside plot (top-left corner)
+        _draw_str(canvas, label, PAD_L + 4, H - yt + 1, DARK, H, W, FONT_SCALE)
+
+        # y-axis labels (right-aligned in PAD_L margin)
+        rx = PAD_L - 4
+        ty_max = H - yt + 1
+        ty_min = H - FONT_H - yb - 1
+        _draw_str_right(canvas, _fmt_val(d_max), rx, ty_max, MUTED, H, W, FONT_SCALE)
+        _draw_str_right(canvas, _fmt_val(d_min), rx, ty_min, MUTED, H, W, FONT_SCALE)
+
+    # ── x axis ────────────────────────────────────────────────────────────────
+    tick_y = PAD_B + XAXIS_H - 1
+    canvas[tick_y, PAD_L:W - PAD_R, :3] = 0.40
+
+    step = 1 if n <= 10 else 5 if n <= 30 else 10 if n <= 100 else 20
+    ty_tick = H - tick_y + 3
+
+    def _draw_tick(it):
+        tx = PAD_L + int(it / (n - 1) * pw) if n > 1 else PAD_L
+        canvas[max(0, tick_y - 4):tick_y, tx, :3] = 0.40
+        lbl = str(it + 1)
+        lw  = len(lbl) * CHAR_W - FONT_SCALE
+        _draw_str(canvas, lbl, tx - lw // 2, ty_tick, DARK, H, W, FONT_SCALE)
+        return it
+
+    drawn = {_draw_tick(it) for it in range(0, n, step)}
+    if n - 1 not in drawn:
+        _draw_tick(n - 1)
+
+    # ── output (always overwrite; use_fake_user=False so .blend doesn't keep it) ──
+    if _GRAPH_IMAGE_NAME in bpy.data.images:
+        bpy.data.images.remove(bpy.data.images[_GRAPH_IMAGE_NAME])
+    img = bpy.data.images.new(_GRAPH_IMAGE_NAME, width=W, height=H, alpha=False)
+    img.use_fake_user = False
+    img.pixels.foreach_set(canvas.flatten())
+    img.update()
+
+    for window in bpy.context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type == 'IMAGE_EDITOR':
+                area.spaces.active.image = img
+                return
+    print(f"[TopOpt] Metrics graph ready — open an Image Editor to view '{_GRAPH_IMAGE_NAME}'.")
+
+
 def _apply_transforms(context):
     """Apply rotation and scale on every tagged mesh before voxelization."""
     prev_active   = context.view_layer.objects.active
@@ -140,10 +327,14 @@ class TOPOPT_OT_solve_3d(Operator):
 
     confirmed: bpy.props.BoolProperty(default=False, options={'SKIP_SAVE'})
 
-    _timer       = None
-    _gen         = None
-    _problem     = None
-    _solve_start = None
+    _timer              = None
+    _gen                = None
+    _problem            = None
+    _solve_start        = None
+    _compliance_history = None
+    _delta_history      = None
+    _volume_history     = None
+    _time_history       = None
 
     def modal(self, context, event):
         sp = context.scene.topopt
@@ -153,6 +344,13 @@ class TOPOPT_OT_solve_3d(Operator):
                 sp.solve_status = "Cancelled"
                 context.workspace.status_text_set(
                     f"TopOpt  Cancelled  {sp.solve_iter_info}  {sp.solve_total_time_info}"
+                )
+                print(f"[TopOpt] Cancelled  {sp.solve_iter_info}  {sp.solve_total_time_info}")
+                _show_compliance_graph(
+                    self._compliance_history or [],
+                    self._delta_history,
+                    self._volume_history,
+                    self._time_history,
                 )
                 return {'CANCELLED'}
 
@@ -166,6 +364,13 @@ class TOPOPT_OT_solve_3d(Operator):
                     f"TopOpt  Max iterations reached  {sp.solve_iter_info}  "
                     f"{sp.solve_compliance_info}  {sp.solve_total_time_info}"
                 )
+                print(f"[TopOpt] Max iterations reached  {sp.solve_iter_info}  {sp.solve_total_time_info}")
+                _show_compliance_graph(
+                    self._compliance_history or [],
+                    self._delta_history,
+                    self._volume_history,
+                    self._time_history,
+                )
                 self._show_result(context)
                 return {'FINISHED'}
             except Exception as err:
@@ -173,6 +378,13 @@ class TOPOPT_OT_solve_3d(Operator):
                 sp.solve_status = f"Error: {type(err).__name__}: {err}"
                 context.workspace.status_text_set(f"TopOpt  Error: {err}")
                 self.report({'ERROR'}, f"{type(err).__name__}: {err}")
+                print(f"[TopOpt] ERROR  {type(err).__name__}: {err}")
+                _show_compliance_graph(
+                    self._compliance_history or [],
+                    self._delta_history,
+                    self._volume_history,
+                    self._time_history,
+                )
                 return {'CANCELLED'}
 
             elapsed = time.time() - t0
@@ -187,6 +399,13 @@ class TOPOPT_OT_solve_3d(Operator):
                 context.workspace.status_text_set(
                     f"TopOpt  Timed out  {sp.solve_iter_info}  "
                     f"iter took {_fmt(elapsed)} (limit {timeout}s)"
+                )
+                print(f"[TopOpt] Timed out  {sp.solve_iter_info}  iter took {_fmt(elapsed)} (limit {timeout}s)")
+                _show_compliance_graph(
+                    self._compliance_history or [],
+                    self._delta_history,
+                    self._volume_history,
+                    self._time_history,
                 )
                 return {'CANCELLED'}
 
@@ -203,6 +422,10 @@ class TOPOPT_OT_solve_3d(Operator):
             sp.solve_total_time_info = f"Total: {_fmt(total)}"
             sp.solve_status          = "Converged" if result.converged else ""
             sp.solve_compliance_info = f"Comp={result.compliance:.4g}"
+            self._compliance_history.append(result.compliance)
+            self._delta_history.append(result.change)
+            self._volume_history.append(result.vol_frac)
+            self._time_history.append(elapsed)
             sp.solve_volume_info     = f"Vol={result.vol_frac:.3f}"
             sp.solve_change_info     = f"Δ={result.change:.5f}"
 
@@ -210,12 +433,21 @@ class TOPOPT_OT_solve_3d(Operator):
                 f"TopOpt  {sp.solve_iter_info}  {sp.solve_compliance_info}  "
                 f"{sp.solve_change_info}  {sp.solve_time_info}  {sp.solve_total_time_info}     [ESC] Cancel"
             )
+            print(f"[TopOpt] {sp.solve_iter_info}  {sp.solve_compliance_info}"
+                  f"  {sp.solve_change_info}  {sp.solve_time_info}  {sp.solve_total_time_info}")
 
             if result.converged:
                 self._finish(context)
                 context.workspace.status_text_set(
                     f"TopOpt  Converged  {sp.solve_iter_info}  "
                     f"{sp.solve_compliance_info}  {sp.solve_total_time_info}"
+                )
+                print(f"[TopOpt] Converged  {sp.solve_iter_info}  {sp.solve_compliance_info}  {sp.solve_total_time_info}")
+                _show_compliance_graph(
+                    self._compliance_history or [],
+                    self._delta_history,
+                    self._volume_history,
+                    self._time_history,
                 )
                 self._show_result(context)
                 self.report({'INFO'}, f"Converged in {result.iteration} iterations.")
@@ -227,6 +459,13 @@ class TOPOPT_OT_solve_3d(Operator):
             context.workspace.status_text_set(
                 f"TopOpt  Cancelled  {sp.solve_iter_info}  {sp.solve_total_time_info}"
             )
+            print(f"[TopOpt] Cancelled (ESC)  {sp.solve_iter_info}  {sp.solve_total_time_info}")
+            _show_compliance_graph(
+                    self._compliance_history or [],
+                    self._delta_history,
+                    self._volume_history,
+                    self._time_history,
+                )
             self.report({'WARNING'}, "Solve cancelled.")
             return {'CANCELLED'}
 
@@ -286,6 +525,13 @@ class TOPOPT_OT_solve_3d(Operator):
         sp.is_solving             = True
         sp.solve_cancel_requested = False
         self._solve_start         = time.time()
+        self._compliance_history = []
+        self._delta_history      = []
+        self._volume_history     = []
+        self._time_history       = []
+        print(f"\n[TopOpt] Starting  grid={nx}×{ny}×{nz}  voxels={p.n_design_voxels}"
+              f"  target_vol={p.target_volume_fraction:.2f}"
+              f"  E={p.youngs_modulus_GPa}GPa  ν={p.poissons_ratio}")
 
         wm = context.window_manager
         context.workspace.status_text_set(
@@ -566,3 +812,6 @@ def register():
 def unregister():
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)
+    img = bpy.data.images.get(_GRAPH_IMAGE_NAME)
+    if img:
+        bpy.data.images.remove(img)
