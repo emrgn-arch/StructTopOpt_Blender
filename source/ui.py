@@ -18,6 +18,10 @@ try:
 except ImportError:
     _scipy_ok = False
 
+
+def _fmt(s):
+    return f"{int(s // 60)}m {s % 60:.0f}s" if s >= 60 else f"{s:.1f}s"
+
 def _apply_transforms(context):
     """Apply rotation and scale on every tagged mesh before voxelization."""
     prev_active   = context.view_layer.objects.active
@@ -164,18 +168,14 @@ class TOPOPT_OT_solve_3d(Operator):
                 )
                 self._show_result(context)
                 return {'FINISHED'}
-            except RuntimeError as err:
+            except Exception as err:
                 self._finish(context)
-                sp.solve_status = f"Error: {err}"
+                sp.solve_status = f"Error: {type(err).__name__}: {err}"
                 context.workspace.status_text_set(f"TopOpt  Error: {err}")
-                self.report({'ERROR'}, str(err))
+                self.report({'ERROR'}, f"{type(err).__name__}: {err}")
                 return {'CANCELLED'}
 
             elapsed = time.time() - t0
-            total   = time.time() - self._solve_start
-
-            def _fmt(s):
-                return f"{int(s//60)}m {s%60:.0f}s" if s >= 60 else f"{s:.1f}s"
 
             timeout = sp.iter_timeout_secs
             if elapsed > timeout:
@@ -194,6 +194,8 @@ class TOPOPT_OT_solve_3d(Operator):
             threshold = context.scene.topopt.density_threshold
             preview.build_result_preview(context, self._problem, result.density, threshold)
             self._redraw(context)
+
+            total = time.time() - self._solve_start
 
             max_iter = sp.max_iterations
             sp.solve_iter_info       = f"Iter {result.iteration}/{max_iter}"
@@ -383,7 +385,12 @@ class TOPOPT_OT_cancel_solve(Operator):
     bl_options = {'REGISTER'}
 
     def execute(self, context):
-        context.scene.topopt.solve_cancel_requested = True
+        sp = context.scene.topopt
+        sp.solve_cancel_requested = True
+        # Force-reset in case the modal died without cleaning up.
+        sp.is_solving            = False
+        sp.solve_confirm_pending = False
+        sp.solve_status          = "Cancelled"
         return {'FINISHED'}
 
 
