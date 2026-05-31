@@ -89,11 +89,11 @@ Click **Generate Mesh** to extract a mesh from the density field. An isosurface 
   <tr>
     <td align="center">
       <img src="media/bookshelf.gif" width="280"/><br/>
-      <em>An example of organic bookshelf generation</em>
+      <em>Organic bookshelf generation</em>
     </td>
     <td align="center">
-      <img src="media/example2.gif" width="280"/><br/>
-      <em>description 2</em>
+      <img src="media/bike.gif" width="280"/><br/>
+      <em>Bike frame generation</em>
     </td>
     <td align="center">
       <img src="media/example3.gif" width="280"/><br/>
