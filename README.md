@@ -8,7 +8,7 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Blender](https://img.shields.io/badge/Blender-4.2%2B-orange.svg)](https://extensions.blender.org/add-ons/struct-topo-opt/)
 
-A ([Blender addon](https://extensions.blender.org/add-ons/struct-topo-opt/)) for early-stage structural topology optimization, intended as a tool for **geometry discovery** through analyzing applied loads, boundary conditions and material distribution within the given design space.
+A [Blender add-on](https://extensions.blender.org/add-ons/struct-topo-opt/) for early-stage structural topology optimization, intended as a tool for **geometry discovery** through analyzing applied loads, boundary conditions and material distribution within the given design space.
 
 Inspired by [TopOpt_teach](https://github.com/MCM-QMUL/TopOpt_teach/tree/main), the addon implements a simplified 3D SIMP+OC (Solid Isotropic Material with Penalization and Optimality Criteria) solver and wraps it in Blender's 3D viewport — so you can sketch a design space, tag loads and supports on regular meshes, and quickly visualize where material "wants" to be in a voxelized manner. The aim is to give designers and curious tinkerers a low-friction way to *see* candidate shapes early in a process, without relying on closed or commercially available topology optimization software.
 
@@ -25,8 +25,6 @@ To be clear upfront regarding Blender implementation: this is *structural* topol
 2. In Blender: **Edit → Preferences → Add-ons → Install from Disk…**, select the zip.
 3. The panel appears in the **3D Viewport N-panel** under the **Struct Topo** tab.
 
-`scipy` is bundled inside the zip — no extra installation required.
-
 ---
 
 ## Model Setup
@@ -40,7 +38,6 @@ Tag regular Blender mesh objects with roles from the **Struct Topo** panel. Each
 | **Support** | Red | Voxels here are fixed (Dirichlet boundary condition) |
 | **Property Region** | Yellow | Voxels constrained to a fixed density. *Target Density*: `1.0` = force solid, `0.0` = force void. |
 
-
 Once roles are assigned, set the **Voxel Size** and click **Voxelize & Preview**. The viewport switches to Material Preview and shows the voxelized domain as colored cubes (transforms are applied to meshes in this stage). A DOF count and potential warning will be visible if the grid is large enough to make solving slow. (for now)
 
 <div align="center">
@@ -51,7 +48,7 @@ Once roles are assigned, set the **Voxel Size** and click **Voxelize & Preview**
 
 ## Solver
 
-Run the solver with the **Solve** button. Progress is shown live — iteration count, compliance, volume fraction, and density change per iteration.
+Run the solver with the **Solve** button. Progress is shown live; iteration count, compliance, volume fraction, and density change per iteration.
 
 | Parameter | Default | Description |
 |---|---|---|
@@ -70,9 +67,9 @@ Run the solver with the **Solve** button. Progress is shown live — iteration c
 
 ## Result & Preview
 
-The **Threshold** slider controls which voxels are visible — only voxels with a density above the threshold are shown. At `0.8` you see the densest, most load-bearing material. Lowering it reveals transitional regions. The preview updates in real time as you drag the slider.
+The **Threshold** slider controls which voxels are visible — only voxels with a density above the threshold are shown. At `0.8` you see the densest, most load-bearing material. Lowering it reveals transitional regions.
 
-Click **Generate Mesh** to extract a mesh from the density field. An isosurface is extracted from the density field using the Marching Cubes Lorensen algorithm (via [MarchingNumPy](https://github.com/alistairboyer/MarchingNumPy)), followed by a Smooth Remesh pass and optional Laplacian smoothing.
+Click **Generate Mesh** to extract a mesh from the density field. An isosurface is extracted from the density field using the Marching Cubes Lorensen algorithm (via [MarchingNumPy](https://github.com/alistairboyer/MarchingNumPy)), followed by a Smooth Remesh pass and Laplacian smoothing.
 
 | Option | Description |
 |---|---|
