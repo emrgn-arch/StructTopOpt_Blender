@@ -274,6 +274,7 @@ class TOPOPT_OT_voxelize_preview(Operator):
 
         context.scene.topopt.grid_domain_voxels = p.n_design_voxels
         preview_obj = preview.build_preview_mesh(context, p, show_domain=self.show_domain)
+        preview.build_load_arrows(context, p)
 
         hidden_count = 0
         for obj in context.scene.objects:
@@ -312,9 +313,16 @@ class TOPOPT_OT_toggle_sources(Operator):
         if not tagged:
             self.report({'WARNING'}, "No tagged meshes found.")
             return {'CANCELLED'}
+        # Include load arrow empties parented to tagged objects
+        all_objs = list(tagged)
+        for obj in tagged:
+            all_objs.extend(
+                c for c in obj.children
+                if c not in all_objs and c.name.startswith(preview.ARROW_PREFIX)
+            )
         any_hidden = any(o.hide_get() for o in tagged)
         new_state = not any_hidden
-        for obj in tagged:
+        for obj in all_objs:
             obj.hide_set(new_state)
         return {'FINISHED'}
 

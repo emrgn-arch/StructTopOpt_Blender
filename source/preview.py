@@ -21,6 +21,7 @@ _COLOR_KEEP    = (0.95, 0.85, 0.10, 1.0)   # yellow (property regions / passive 
 
 # Name we use for the preview object. Re-running the voxelizer overwrites it.
 PREVIEW_NAME = "TopOpt_Preview"
+ARROW_PREFIX = "TopOpt_Arrow_"
 
 
 def _domain_shell(mask):
@@ -281,3 +282,60 @@ def clear_preview():
         bpy.data.objects.remove(old, do_unlink=True)
         if old_mesh and old_mesh.users == 0:
             bpy.data.meshes.remove(old_mesh)
+
+
+def build_load_arrows(context, problem):
+    """Create one Empty (Single Arrow) per load case, parented to its load mesh."""
+    import math
+
+    for obj in list(bpy.data.objects):
+        if obj.name.startswith(ARROW_PREFIX):
+            bpy.data.objects.remove(obj, do_unlink=True)
+
+    vs  = problem.voxel_size
+    off = problem.grid_offset_local
+
+    domain_obj = next(
+        (o for o in context.scene.objects
+         if o.type == 'MESH' and o.topopt.role == props.ROLE_DOMAIN),
+        None,
+    )
+    world_mat = np.array(domain_obj.matrix_world) if domain_obj else np.eye(4)
+
+    for lc in problem.loads:
+        if not lc.mask.any():
+            continue
+
+        d = np.array(lc.direction, dtype=np.float64)
+        if np.linalg.norm(d) < 1e-10:
+            continue
+        d /= np.linalg.norm(d)
+
+        ix, iy, iz = np.where(lc.mask)
+        cx = off[0] + (ix + 0.5) * vs
+        cy = off[1] + (iy + 0.5) * vs
+        cz = off[2] + (iz + 0.5) * vs
+
+        centroid  = np.array([cx.mean(), cy.mean(), cz.mean()])
+        min_proj  = float((cx * d[0] + cy * d[1] + cz * d[2]).min())
+        cent_proj = float(centroid @ d)
+
+        arrow_size = vs * 4.0
+        tail_local = centroid + (min_proj - vs * 0.5 - arrow_size - cent_proj) * d
+        tail_world = (world_mat @ np.append(tail_local, 1.0))[:3]
+
+        # Euler XYZ to align Empty's +Z axis with d: (0, elevation, azimuth)
+        elevation = math.acos(float(np.clip(d[2], -1.0, 1.0)))
+        azimuth   = math.atan2(float(d[1]), float(d[0]))
+
+        arrow = bpy.data.objects.new(f"{ARROW_PREFIX}{lc.name}", None)
+        arrow.empty_display_type = 'SINGLE_ARROW'
+        arrow.empty_display_size = arrow_size
+        arrow.location           = tail_world.tolist()
+        arrow.rotation_euler     = (0.0, elevation, azimuth)
+        context.collection.objects.link(arrow)
+
+        load_obj = bpy.data.objects.get(lc.name)
+        if load_obj:
+            arrow.parent = load_obj
+            arrow.matrix_parent_inverse = load_obj.matrix_world.inverted()
