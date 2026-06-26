@@ -145,7 +145,7 @@ class TopOptObjectProps(PropertyGroup):
     domain_youngs_modulus: FloatProperty(
         name="Young's Modulus (GPa)",
         description="Material stiffness. Steel ~200, aluminum ~70, plastic ~2",
-        default=60.0, min=0.01, soft_max=500.0,
+        default=60.0, min=0.01, max=900.0, soft_max=200.0,
     )
     domain_poissons_ratio: FloatProperty(
         name="Poisson's Ratio",
