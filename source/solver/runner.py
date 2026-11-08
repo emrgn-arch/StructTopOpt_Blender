@@ -11,7 +11,7 @@ from typing import Generator
 import numpy as np
 
 from .fe3d import (
-    E_MIN, element_stiffness_3d, build_dof_maps_3d, ReducedSystem, compute_sensitivities_3d,
+    E_MIN, NODE_OFFSETS, GridSystem, element_stiffness_3d, compute_sensitivities_3d,
 )
 from .oc import sensitivity_filter, oc_update, RHO_MIN
 
@@ -33,69 +33,48 @@ def solve_3d(
     max_iter: int = 80,
     conv_tol: float = 0.01,
     move_limit: float = 0.2,
+    cancel=None,
 ) -> Generator[IterResult, None, None]:
-    """Full 3-D SIMP+OC generator — yields one IterResult per iteration."""
+    """Full 3-D SIMP+OC generator — yields one IterResult per iteration.
+
+    `cancel` is an optional threading.Event; setting it aborts a running
+    FE solve with fe3d.SolveCancelled.
+    """
 
     nx, ny, nz = problem.shape
-    E        = problem.youngs_modulus_GPa
-    nu       = problem.poissons_ratio
-    volfrac  = problem.target_volume_fraction
+    volfrac    = problem.target_volume_fraction
+    Ke         = element_stiffness_3d(problem.youngs_modulus_GPa, problem.poissons_ratio)
 
-    Ke   = element_stiffness_3d(E, nu)
-    edof = build_dof_maps_3d(nx, ny, nz)
-    nxy  = (nx + 1) * (ny + 1)
-    n_dofs = 3 * (nx + 1) * (ny + 1) * (nz + 1)
-
-    # --- Build load vector (all 3 force components) ---
-    f_global = np.zeros(n_dofs)
+    # --- Load vector: each load's total force is spread equally over the
+    # corner nodes of its voxels ---
+    f = np.zeros((nx + 1, ny + 1, nz + 1, 3))
     for lc in problem.loads:
         n_vox = int(lc.mask.sum())
         if n_vox == 0:
             continue
-        # Distribute total force equally across all load voxels, then
-        # split each voxel's share to its 8 corner nodes.
-        force_per_vox = lc.total_force_kN / n_vox * lc.direction  # kN per voxel
-        fx, fy, fz = float(force_per_vox[0]), float(force_per_vox[1]), float(force_per_vox[2])
-        if abs(fx) + abs(fy) + abs(fz) < 1e-30:
-            continue
-        ix, iy, iz = np.where(lc.mask)
-        n0 = iz * nxy + iy * (nx+1) + ix
-        for n_arr in [n0, n0+1, n0+(nx+1)+1, n0+(nx+1),
-                      n0+nxy, n0+nxy+1, n0+nxy+(nx+1)+1, n0+nxy+(nx+1)]:
-            np.add.at(f_global, 3*n_arr,   fx / 8)
-            np.add.at(f_global, 3*n_arr+1, fy / 8)
-            np.add.at(f_global, 3*n_arr+2, fz / 8)
+        force = lc.total_force_kN / n_vox * lc.direction / 8
+        ix, iy, iz = np.nonzero(lc.mask)
+        for a, b, c in NODE_OFFSETS:
+            f[ix + a, iy + b, iz + c] += force
 
-    if np.linalg.norm(f_global) < 1e-30:
+    if np.linalg.norm(f) < 1e-30:
         print("[Struct Topo] No force — solver skipped.")
         yield IterResult(0, problem.domain_mask.astype(float) * volfrac,
                          0.0, volfrac, True, 0.0)
         return
 
-    # --- Fixed DOFs: all 3 DOFs of every node of every support voxel ---
-    sup_ix, sup_iy, sup_iz = np.where(problem.support_mask)
-    n0 = sup_iz * nxy + sup_iy * (nx+1) + sup_ix
-    sup_nodes = np.unique(np.concatenate([
-        n0, n0+1, n0+(nx+1)+1, n0+(nx+1),
-        n0+nxy, n0+nxy+1, n0+nxy+(nx+1)+1, n0+nxy+(nx+1),
-    ]))
-    fixed_dofs = (3 * sup_nodes[:, None] + np.arange(3)).ravel()
-
-    if len(fixed_dofs) == 0:
+    if not problem.support_mask.any():
         raise RuntimeError("No support voxels — the structure is unconstrained.")
 
-    # --- Domain / passive masks (ravel 'F' matches edof k→j→i traversal) ---
-    domain_flat = problem.domain_mask.ravel(order='F')
+    # --- Domain / passive masks ---
+    domain = problem.domain_mask
+    ps = problem.passive_solid_mask & domain if problem.passive_solid_mask is not None else None
+    pv = problem.passive_void_mask  & domain if problem.passive_void_mask  is not None else None
 
-    ps_flat = (problem.passive_solid_mask.ravel(order='F') & domain_flat
-               if problem.passive_solid_mask is not None else None)
-    pv_flat = (problem.passive_void_mask.ravel(order='F')  & domain_flat
-               if problem.passive_void_mask  is not None else None)
-
-    opt_flat = domain_flat.copy()
-    if ps_flat is not None: opt_flat &= ~ps_flat
-    if pv_flat is not None: opt_flat &= ~pv_flat
-    n_opt = int(opt_flat.sum())
+    opt = domain.copy()
+    if ps is not None: opt &= ~ps
+    if pv is not None: opt &= ~pv
+    n_opt = int(opt.sum())
 
     if n_opt == 0:
         raise RuntimeError("No optimisable voxels — supports and solid/void property "
@@ -103,9 +82,9 @@ def solve_3d(
 
     # --- Volume groups: one per partial-density property region, the rest at the domain target ---
     groups = []
-    rest = opt_flat.copy()
+    rest = opt.copy()
     for vr in problem.volume_regions:
-        g = vr.mask.ravel(order='F') & rest
+        g = vr.mask & rest
         if g.any():
             groups.append((g, vr.target_density))
             rest &= ~g
@@ -113,50 +92,45 @@ def solve_3d(
     if rest.any():
         groups.append((rest, volfrac))
 
-    # --- FE system over the domain elements only ---
-    act    = np.flatnonzero(domain_flat)
-    system = ReducedSystem(Ke, edof[act], fixed_dofs, n_dofs)
-    f_free = f_global[system.free_dofs]
+    system = GridSystem(Ke, domain, problem.support_mask)
 
-    print(f"[Struct Topo] {nx}×{ny}×{nz} grid, {n_opt} opt elements, {system.n_free} free DOFs"
+    print(f"[Struct Topo] {nx}×{ny}×{nz} grid, {n_opt} opt elements, {system.n_free} free DOFs, "
+          f"{system.n_levels} multigrid levels"
           + (f", {n_local} local volume region(s)" if n_local else ""))
 
     # --- Initial density ---
-    rho = np.full(nx * ny * nz, RHO_MIN)
+    rho = np.full((nx, ny, nz), RHO_MIN)
     for g, target in groups:
         rho[g] = target
-    if ps_flat is not None: rho[ps_flat] = 1.0
-    if pv_flat is not None: rho[pv_flat] = RHO_MIN
+    if ps is not None: rho[ps] = 1.0
+    if pv is not None: rho[pv] = RHO_MIN
 
     rho_old = rho.copy()
+    u = None
 
     for iteration in range(max_iter):
-        rho_act = rho[act]
-        u = system.solve(E_MIN + rho_act**penal * (1.0 - E_MIN), f_free)
+        E_e = np.where(domain, E_MIN + rho**penal * (1.0 - E_MIN), 0.0)
+        u = system.solve(E_e, f, x0=u, cancel=cancel)  # warm start from the last iteration
 
-        compliance = float(f_free @ u)
-        dc = np.zeros_like(rho)
-        dc[act] = compute_sensitivities_3d(system.element_displacements(u), rho_act, Ke, penal)
+        compliance = float(np.vdot(f, u))
+        dc = compute_sensitivities_3d(system.element_displacements(u), rho, Ke, penal)
+        dc = np.where(domain, dc, 0.0)
+        dc_pos = np.maximum(0.0, sensitivity_filter(dc, rho, filter_radius))
 
-        dc_3d  = dc.reshape(nx, ny, nz, order='F')
-        rho_3d = rho.reshape(nx, ny, nz, order='F')
-        dc_filt = sensitivity_filter(dc_3d, rho_3d, filter_radius).ravel(order='F')
-
-        dc_pos = np.maximum(0.0, dc_filt)
         for g, target in groups:
             rho[g] = oc_update(rho[g], dc_pos[g], np.ones(int(g.sum())), target, move=move_limit)
-        if ps_flat is not None: rho[ps_flat] = 1.0
-        if pv_flat is not None: rho[pv_flat] = RHO_MIN
+        if ps is not None: rho[ps] = 1.0
+        if pv is not None: rho[pv] = RHO_MIN
 
-        change = float(np.max(np.abs(rho[opt_flat] - rho_old[opt_flat])))
+        change = float(np.max(np.abs(rho[opt] - rho_old[opt])))
         rho_old = rho.copy()
 
-        vol_frac_now = float(rho[opt_flat].mean())
+        vol_frac_now = float(rho[opt].mean())
         converged    = change < conv_tol
 
         yield IterResult(
             iteration=iteration + 1,
-            density=rho.reshape(nx, ny, nz, order='F').copy(),
+            density=rho.copy(),
             compliance=compliance,
             vol_frac=vol_frac_now,
             converged=converged,

@@ -13,12 +13,11 @@ from . import problem
 from . import preview
 from . import properties as props
 from . import results as res
+from .solver.fe3d import SolveCancelled
 
-try:
-    import scipy as _scipy_check  # noqa: F401
-    _scipy_ok = True
-except ImportError:
-    _scipy_ok = False
+# Panel warnings by FE system size; solving above _DOFS_VERY_SLOW asks for confirmation.
+_DOFS_SLOW      = 250_000
+_DOFS_VERY_SLOW = 500_000
 
 
 def _fmt(s):
@@ -334,18 +333,18 @@ class TOPOPT_OT_toggle_sources(Operator):
 
 
 class _SolveWorker(threading.Thread):
-    """Runs the solver generator off the main thread so Blender stays responsive.
+    """Runs solve_3d off the main thread so Blender stays responsive.
 
     Never touches bpy. Posts ('iter', IterResult, seconds) per iteration, then
-    ('done', None, 0) or ('error', exception, 0). Once `stop` is set it exits
-    after the current iteration (a running factorization can't be interrupted).
+    ('done', None, 0) or ('error', exception, 0). Setting `stop` aborts the
+    running FE solve within one CG step.
     """
 
-    def __init__(self, gen):
+    def __init__(self, solve_3d, problem, **params):
         super().__init__(daemon=True, name="TopOpt solver")
-        self.gen          = gen
         self.results      = queue.Queue()
         self.stop         = threading.Event()
+        self.gen          = solve_3d(problem, cancel=self.stop, **params)
         self.iter_started = time.time()
 
     def run(self):
@@ -358,6 +357,8 @@ class _SolveWorker(threading.Thread):
                     self.results.put(('done', None, 0.0))
                     return
                 self.results.put(('iter', r, time.time() - self.iter_started))
+        except SolveCancelled:
+            pass
         except Exception as err:
             self.results.put(('error', err, 0.0))
         finally:
@@ -476,8 +477,7 @@ class TOPOPT_OT_solve_3d(Operator):
         self._finish(context)
 
     def invoke(self, context, event):
-        n_dom = context.scene.topopt.grid_domain_voxels
-        if n_dom > 15000 and not self.confirmed:
+        if context.scene.topopt.grid_n_dofs > _DOFS_VERY_SLOW and not self.confirmed:
             # Flag the panel to show the inline confirmation buttons instead.
             context.scene.topopt.solve_confirm_pending = True
             return {'CANCELLED'}
@@ -494,8 +494,7 @@ class TOPOPT_OT_solve_3d(Operator):
         global _active_worker
         sp = context.scene.topopt
         if _active_worker is not None and _active_worker.is_alive():
-            self.report({'WARNING'}, "The previous solve is still finishing its last iteration — "
-                                     "try again in a moment.")
+            self.report({'WARNING'}, "The previous solve is still stopping — try again in a moment.")
             return {'CANCELLED'}
         if preview.PREVIEW_NAME not in bpy.data.objects:
             self.report({'ERROR'}, "No preview mesh — run 'Voxelize & Preview' first.")
@@ -518,8 +517,7 @@ class TOPOPT_OT_solve_3d(Operator):
             self.report({'ERROR'}, f"Solver import error: {type(e).__name__}: {e}")
             return {'CANCELLED'}
 
-        gen = solve_3d(
-            p,
+        params = dict(
             penal=sp.penalty,
             filter_radius=sp.filter_radius_voxels,
             max_iter=sp.max_iterations,
@@ -551,7 +549,7 @@ class TOPOPT_OT_solve_3d(Operator):
         context.workspace.status_text_set(
             f"TopOpt  Starting ({nx}×{ny}×{nz})     [ESC] Cancel"
         )
-        self._worker = _active_worker = _SolveWorker(gen)
+        self._worker = _active_worker = _SolveWorker(solve_3d, p, **params)
         self._worker.start()
         self._timer = wm.event_timer_add(0.05, window=context.window)
         wm.modal_handler_add(self)
@@ -559,7 +557,7 @@ class TOPOPT_OT_solve_3d(Operator):
 
     def _finish(self, context):
         if self._worker is not None:
-            self._worker.stop.set()  # exits after its current iteration
+            self._worker.stop.set()
             self._worker = None
         wm = context.window_manager
         if self._timer:
@@ -719,14 +717,13 @@ class TOPOPT_PT_main(Panel):
         row = box.row()
         row.enabled = not scene.topopt.is_solving
         row.operator("topopt.voxelize_preview", icon='MESH_GRID')
-        n_dom  = scene.topopt.grid_domain_voxels
         n_dofs = scene.topopt.grid_n_dofs
-        if n_dofs > 150_000:
+        if n_dofs > _DOFS_VERY_SLOW:
             w = box.column()
             w.alert = True
             w.label(text=f"{n_dofs:,} DOFs — 3D solve will be very slow!", icon='ERROR')
             w.label(text="Increase voxel size to reduce DOF count")
-        elif n_dofs > 45_000:
+        elif n_dofs > _DOFS_SLOW:
             w = box.column()
             w.alert = True
             w.label(text=f"{n_dofs:,} DOFs — solve may be slow", icon='INFO')
@@ -736,10 +733,6 @@ class TOPOPT_PT_main(Panel):
 
         box = layout.box()
         box.label(text="Solver", icon='SETTINGS')
-
-        if not _scipy_ok:
-            box.label(text="scipy not found — reload addon to install", icon='ERROR')
-            return
 
         col = box.column(align=True)
         row = col.row(align=True)
@@ -763,7 +756,7 @@ class TOPOPT_PT_main(Panel):
             # Large-grid inline confirmation
             w = box.column(align=True)
             w.alert = True
-            w.label(text=f"Large grid ({n_dom} voxels) — continue?", icon='ERROR')
+            w.label(text=f"Large grid ({n_dofs:,} DOFs) — continue?", icon='ERROR')
             r = w.row(align=True)
             op = r.operator("topopt.solve_3d", text="Yes, Solve", icon='CHECKMARK')
             op.confirmed = True

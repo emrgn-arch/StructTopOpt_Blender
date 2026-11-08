@@ -5,7 +5,6 @@ Reference: Sigmund (2001) 99-line code, Andreassen et al. (2011) 88-line code.
 """
 
 import numpy as np
-from scipy.ndimage import convolve
 
 RHO_MIN = 1e-3
 
@@ -27,11 +26,21 @@ def sensitivity_filter(dc, rho, r_min):
     dc_filt[e] = Σ_f (H_ef · ρ_f · dc_f) / (ρ_e · Σ_f H_ef)
     """
     H = _cone_kernel(r_min, ndim=dc.ndim)
-    if H.sum() < 1e-12:
+    H_sum = H.sum()  # mirrored edges make Σ_f H_ef the same for every element
+    if H_sum < 1e-12:
         return dc
-    H_sum = convolve(np.ones_like(dc), H, mode='reflect')
-    num   = convolve(rho * dc,         H, mode='reflect')
-    return num / (np.maximum(RHO_MIN, rho) * np.maximum(1e-12, H_sum))
+    return _convolve(rho * dc, H) / (np.maximum(RHO_MIN, rho) * H_sum)
+
+
+def _convolve(x, H):
+    """Convolve with a symmetric kernel H, mirroring the edges (half-sample
+    symmetric, like scipy.ndimage's 'reflect' mode): one shifted sum per weight."""
+    r   = H.shape[0] // 2
+    xp  = np.pad(x, r, mode='symmetric')
+    out = np.zeros(x.shape)
+    for offset in zip(*np.nonzero(H)):
+        out += H[offset] * xp[tuple(slice(o, o + n) for o, n in zip(offset, x.shape))]
+    return out
 
 
 def oc_update(rho, dc, dv, volfrac, move=0.2, eta=0.5):

@@ -18,10 +18,10 @@ To be clear upfront regarding Blender implementation: this is *structural* topol
 
 ## Installation
 
-1. Download the platform-specific zip for your OS from [Releases](../../releases):
-   - `struct_top_opt-X.X.X-windows_x64.zip`
-   - `struct_top_opt-X.X.X-linux_x64.zip`
-   - `struct_top_opt-X.X.X-macos_arm64.zip`
+1. Download the zip for your OS from [Releases](../../releases):
+   - `add-on-struct-topo-opt-vX.X.X-windows-x64.zip`
+   - `add-on-struct-topo-opt-vX.X.X-linux-x64.zip`
+   - `add-on-struct-topo-opt-vX.X.X-macos-arm64.zip`
 2. In Blender: **Edit → Preferences → Add-ons → Install from Disk…**, select the zip.
 3. The panel appears in the **3D Viewport N-panel** under the **Struct Topo** tab.
 
@@ -100,6 +100,15 @@ Click **Generate Mesh** to extract a mesh from the density field. An isosurface 
 
 ## Release Notes
 
+### v0.5.0
+
+**Improved**
+- New multigrid solver: much faster on large grids (up to ~50×) and uses far less memory.
+- Removed SciPy dependancy: downloads shrink to ~50 KB.
+
+**Fixed**
+- Install and update errors caused by the bundled SciPy.
+
 ### v0.4.6
 
 **Improved**
@@ -118,8 +127,6 @@ Click **Generate Mesh** to extract a mesh from the density field. An isosurface 
 
 - **[TopOpt_teach](https://github.com/MCM-QMUL/TopOpt_teach/tree/main)** — the 3D SIMP+OC solver this addon is based on.
 - **[MarchingNumPy](https://github.com/alistairboyer/MarchingNumPy)** by Alistair Boyer — pure-NumPy Marching Cubes Lorensen implementation used for mesh extraction. MIT License.
-- **[SciPy](https://scipy.org)** — sparse linear algebra used by the FEM solver, bundled with the extension. BSD-3-Clause License.
-
 
 
 
