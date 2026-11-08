@@ -51,7 +51,7 @@ def marching_factory(
         interpolation: str = "LINEAR",
         step_size: int = 1,
         resolve_ambiguous: bool = True,
-    ) -> Tuple[NDArray[numpy.float16], NDArray[numpy.uint64]]:
+    ) -> Tuple[NDArray[numpy.float32], NDArray[numpy.uint64]]:
         """
         Marching Algorithm.
 
@@ -96,7 +96,7 @@ def marching_factory(
 
         Returns
         -------
-        vertices : NDArray[numpy.float16]
+        vertices : NDArray[numpy.float32]
             NDArray of coordinates of calculated vertices.
         geometry : NDArray[numpy.uint64]]
             NDArray list of vertex numbers to describe how each vertex is connected.

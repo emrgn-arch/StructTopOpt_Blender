@@ -10,6 +10,27 @@ from .MarchingNumPy import marching_cubes_lorensen
 MESH_NAME = "TopOpt_Mesh"
 
 
+def mesh_visible():
+    """True if the generated mesh exists and is shown in the viewport."""
+    obj = bpy.data.objects.get(MESH_NAME)
+    if obj is None:
+        return False
+    try:
+        return not obj.hide_get()
+    except RuntimeError:  # not in the active view layer
+        return False
+
+
+def hide_mesh():
+    """Hide the generated mesh, if any — e.g. when a new solve makes it stale."""
+    obj = bpy.data.objects.get(MESH_NAME)
+    if obj is not None:
+        try:
+            obj.hide_set(True)
+        except RuntimeError:  # not in the active view layer
+            pass
+
+
 def generate(
     context,
     problem,
@@ -36,14 +57,15 @@ def generate(
         for lc in problem.loads:
             vol[lc.mask] = 1.0
 
+    # An empty border closes the surface where material reaches the grid edge.
+    vol = np.pad(vol, 1)
+
     raw_verts, faces = marching_cubes_lorensen(vol, level=threshold)
     if raw_verts is None or len(raw_verts) == 0 or len(faces) == 0:
         return None
 
-    # marching_cubes_lorensen returns positions in voxel-index space where index i
-    # sits at the corner between voxels i-1 and i. Our voxel centres live at
-    # offset + (i + 0.5) * vs, so add the half-voxel shift to align with preview.
-    verts = raw_verts.astype(np.float32) * vs + offset + np.float32(vs * 0.5)
+    # Sample i is voxel i's centre at offset + (i + 0.5) * vs; the pad shifts indices by one.
+    verts = (raw_verts.astype(np.float64) - 0.5) * vs + offset
 
     if MESH_NAME in bpy.data.objects:
         old = bpy.data.objects[MESH_NAME]

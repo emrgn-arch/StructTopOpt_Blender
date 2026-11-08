@@ -18,8 +18,11 @@ so Ke is computed once and reused. DOF ordering per element:
 
 import itertools
 import numpy as np
-from scipy.sparse import coo_matrix
-from scipy.sparse.linalg import spsolve
+from scipy.sparse import csc_matrix, csr_matrix
+from scipy.sparse.linalg import splu
+
+# Stiffness of a void element relative to solid (keeps K non-singular).
+E_MIN = 1e-9
 
 
 def element_stiffness_3d(E, nu):
@@ -110,37 +113,66 @@ def build_dof_maps_3d(nx, ny, nz):
     return edof
 
 
-def assemble_K_3d(rho_elem, Ke, edof, penal, E_min=1e-9):
-    """Assemble global 3-D stiffness via COO → CSR."""
-    E_e   = E_min + rho_elem**penal * (1.0 - E_min)
-    n_dof = edof.max() + 1
+class ReducedSystem:
+    """Stiffness system of the given (domain) elements with support DOFs removed.
 
-    rows = np.repeat(edof, 24, axis=1).ravel()
-    cols = np.tile(edof, (1, 24)).ravel()
-    vals = np.einsum('e,ij->eij', E_e, Ke).ravel()
+    The DOF numbering, sparsity pattern and the map from element stiffness
+    entries to matrix values are built once; each iteration only recomputes
+    the values (one sparse mat-vec) and factorizes.
+    """
 
-    return coo_matrix((vals, (rows, cols)), shape=(n_dof, n_dof)).tocsr()
+    def __init__(self, Ke, edof, fixed_dofs, n_dofs, E_min=E_MIN):
+        used = np.unique(edof)
+        self.free_dofs = np.setdiff1d(used, fixed_dofs, assume_unique=True)
+        n_free = self.n_free = len(self.free_dofs)
+        if n_free == 0:
+            raise RuntimeError("Supports fix every node of the domain — nothing left to solve.")
+
+        # Reduced numbering; fixed DOFs map to n_free, a zero slot past the end.
+        to_free = np.full(n_dofs, n_free, dtype=np.int64)
+        to_free[self.free_dofs] = np.arange(n_free)
+        self.edof_free = to_free[edof]                  # (n_elem, 24)
+
+        # Entry (e, i, j) of the element matrices lands in K[edof_free[e, i], edof_free[e, j]].
+        n_elem = len(edof)
+        rows = np.repeat(self.edof_free, 24, axis=1).ravel()
+        cols = np.tile(self.edof_free, (1, 24)).ravel()
+        keep = (rows < n_free) & (cols < n_free)
+        keys = rows[keep] * n_free + cols[keep]
+        del rows, cols
+        uniq, slot = np.unique(keys, return_inverse=True)
+        del keys
+        elem = np.repeat(np.arange(n_elem), 24 * 24)[keep]
+        vals = np.tile(Ke.ravel(), n_elem)[keep]
+        self.P = csr_matrix((vals, (slot, elem)), shape=(len(uniq), n_elem))
+
+        k_rows       = uniq // n_free
+        self.indices = (uniq % n_free).astype(np.int32)
+        self.indptr  = np.searchsorted(k_rows, np.arange(n_free + 1)).astype(np.int32)
+        self.diag    = np.flatnonzero(k_rows == self.indices)
+        # One void element's worth of stiffness on every DOF keeps hinged or loose parts solvable.
+        self.reg = E_min * Ke.diagonal().mean()
+
+    def solve(self, E_e, f_free):
+        """Solve K(E_e) u = f_free; returns u in reduced numbering."""
+        data = self.P @ E_e
+        data[self.diag] += self.reg
+        # K is symmetric, so its CSR arrays read as CSC describe the same matrix.
+        K = csc_matrix((data, self.indices, self.indptr), shape=(self.n_free, self.n_free))
+        u = splu(K, permc_spec='MMD_AT_PLUS_A', diag_pivot_thresh=0.0,
+                 options=dict(SymmetricMode=True)).solve(f_free)
+        if not np.all(np.isfinite(u)):
+            raise RuntimeError(
+                "3-D FE solve produced NaN. Ensure supports constrain all 6 "
+                "rigid-body modes (3 translations + 3 rotations)."
+            )
+        return u
+
+    def element_displacements(self, u_free):
+        """(n_elem, 24) displacements per element; fixed DOFs are zero."""
+        return np.append(u_free, 0.0)[self.edof_free]
 
 
-def apply_supports_3d(K, f, fixed_dofs):
-    free = np.setdiff1d(np.arange(K.shape[0]), fixed_dofs)
-    return K[free, :][:, free], f[free], free
-
-
-def solve_system_3d(K_free, f_free, n_dofs, free_dofs):
-    """Solve K_free * u_free = f_free via direct sparse LU (spsolve)."""
-    u_free = spsolve(K_free.tocsc(), f_free)
-    if np.any(np.isnan(u_free)):
-        raise RuntimeError(
-            "3-D FE solve produced NaN. Ensure supports constrain all 6 "
-            "rigid-body modes (3 translations + 3 rotations)."
-        )
-    u = np.zeros(n_dofs)
-    u[free_dofs] = u_free
-    return u
-
-
-def compute_sensitivities_3d(u, edof, rho_elem, Ke, penal, E_min=1e-9):
-    ue = u[edof]                                        # (n_elem, 24)
-    ue_Ke_ue = np.einsum('ei,ij,ej->e', ue, Ke, ue)
+def compute_sensitivities_3d(ue, rho_elem, Ke, penal, E_min=E_MIN):
+    ue_Ke_ue = ((ue @ Ke) * ue).sum(axis=1)
     return penal * (rho_elem**(penal - 1)) * (1.0 - E_min) * ue_Ke_ue

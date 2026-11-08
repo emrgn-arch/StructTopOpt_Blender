@@ -1,5 +1,7 @@
 """N-panel UI for the Structural Topology Optimization addon (3D viewport › Struct Topo tab)."""
 
+import queue
+import threading
 import time
 
 import bpy
@@ -273,6 +275,7 @@ class TOPOPT_OT_voxelize_preview(Operator):
             return {'CANCELLED'}
 
         context.scene.topopt.grid_domain_voxels = p.n_design_voxels
+        context.scene.topopt.grid_n_dofs        = p.n_free_dofs
         preview_obj = preview.build_preview_mesh(context, p, show_domain=self.show_domain)
         preview.build_load_arrows(context, p)
 
@@ -285,6 +288,9 @@ class TOPOPT_OT_voxelize_preview(Operator):
             if obj.topopt.role != props.ROLE_NONE:
                 obj.hide_set(True)
                 hidden_count += 1
+                for c in obj.children:  # load arrows follow their source mesh
+                    if c.name.startswith(preview.ARROW_PREFIX):
+                        c.hide_set(True)
 
         for area in context.screen.areas:
             if area.type == 'VIEW_3D':
@@ -327,6 +333,41 @@ class TOPOPT_OT_toggle_sources(Operator):
         return {'FINISHED'}
 
 
+class _SolveWorker(threading.Thread):
+    """Runs the solver generator off the main thread so Blender stays responsive.
+
+    Never touches bpy. Posts ('iter', IterResult, seconds) per iteration, then
+    ('done', None, 0) or ('error', exception, 0). Once `stop` is set it exits
+    after the current iteration (a running factorization can't be interrupted).
+    """
+
+    def __init__(self, gen):
+        super().__init__(daemon=True, name="TopOpt solver")
+        self.gen          = gen
+        self.results      = queue.Queue()
+        self.stop         = threading.Event()
+        self.iter_started = time.time()
+
+    def run(self):
+        try:
+            while not self.stop.is_set():
+                self.iter_started = time.time()
+                try:
+                    r = next(self.gen)
+                except StopIteration:
+                    self.results.put(('done', None, 0.0))
+                    return
+                self.results.put(('iter', r, time.time() - self.iter_started))
+        except Exception as err:
+            self.results.put(('error', err, 0.0))
+        finally:
+            self.gen.close()
+
+
+# The latest solver thread; a new solve waits until it has fully stopped.
+_active_worker = None
+
+
 class TOPOPT_OT_solve_3d(Operator):
     """Run the full 3-D SIMP+OC solver on the voxelized problem."""
     bl_idname = "topopt.solve_3d"
@@ -336,8 +377,9 @@ class TOPOPT_OT_solve_3d(Operator):
     confirmed: bpy.props.BoolProperty(default=False, options={'SKIP_SAVE'})
 
     _timer              = None
-    _gen                = None
+    _worker             = None
     _problem            = None
+    _max_iter           = None
     _solve_start        = None
     _compliance_history = None
     _delta_history      = None
@@ -346,138 +388,92 @@ class TOPOPT_OT_solve_3d(Operator):
 
     def modal(self, context, event):
         sp = context.scene.topopt
-        if event.type == 'TIMER':
-            if sp.solve_cancel_requested:
-                self._finish(context)
-                sp.solve_status = "Cancelled"
-                context.workspace.status_text_set(
-                    f"TopOpt  Cancelled  {sp.solve_iter_info}  {sp.solve_total_time_info}"
-                )
-                print(f"[TopOpt] Cancelled  {sp.solve_iter_info}  {sp.solve_total_time_info}")
-                _show_compliance_graph(
-                    self._compliance_history or [],
-                    self._delta_history,
-                    self._volume_history,
-                    self._time_history,
-                )
-                return {'CANCELLED'}
-
-            t0 = time.time()
-            try:
-                result = next(self._gen)
-            except StopIteration:
-                self._finish(context)
-                sp.solve_status = "Max iterations reached"
-                context.workspace.status_text_set(
-                    f"TopOpt  Max iterations reached  {sp.solve_iter_info}  "
-                    f"{sp.solve_compliance_info}  {sp.solve_total_time_info}"
-                )
-                print(f"[TopOpt] Max iterations reached  {sp.solve_iter_info}  {sp.solve_total_time_info}")
-                _show_compliance_graph(
-                    self._compliance_history or [],
-                    self._delta_history,
-                    self._volume_history,
-                    self._time_history,
-                )
-                self._show_result(context)
-                return {'FINISHED'}
-            except Exception as err:
-                self._finish(context)
-                sp.solve_status = f"Error: {type(err).__name__}: {err}"
-                context.workspace.status_text_set(f"TopOpt  Error: {err}")
-                self.report({'ERROR'}, f"{type(err).__name__}: {err}")
-                print(f"[TopOpt] ERROR  {type(err).__name__}: {err}")
-                _show_compliance_graph(
-                    self._compliance_history or [],
-                    self._delta_history,
-                    self._volume_history,
-                    self._time_history,
-                )
-                return {'CANCELLED'}
-
-            elapsed = time.time() - t0
-
-            timeout = sp.iter_timeout_secs
-            if elapsed > timeout:
-                self._finish(context)
-                sp.solve_status = (
-                    f"Timed out: iteration took {_fmt(elapsed)} "
-                    f"(limit {timeout}s). Reduce grid resolution."
-                )
-                context.workspace.status_text_set(
-                    f"TopOpt  Timed out  {sp.solve_iter_info}  "
-                    f"iter took {_fmt(elapsed)} (limit {timeout}s)"
-                )
-                print(f"[TopOpt] Timed out  {sp.solve_iter_info}  iter took {_fmt(elapsed)} (limit {timeout}s)")
-                _show_compliance_graph(
-                    self._compliance_history or [],
-                    self._delta_history,
-                    self._volume_history,
-                    self._time_history,
-                )
-                return {'CANCELLED'}
-
-            res.cache_density(result.density)
-            threshold = context.scene.topopt.density_threshold
-            preview.build_result_preview(context, self._problem, result.density, threshold)
-            self._redraw(context)
-
-            total = time.time() - self._solve_start
-
-            max_iter = sp.max_iterations
-            sp.solve_iter_info       = f"Iter {result.iteration}/{max_iter}"
-            sp.solve_time_info       = f"Iter: {_fmt(elapsed)}"
-            sp.solve_total_time_info = f"Total: {_fmt(total)}"
-            sp.solve_status          = "Converged" if result.converged else ""
-            sp.solve_compliance_info = f"Comp={result.compliance:.4g}"
-            self._compliance_history.append(result.compliance)
-            self._delta_history.append(result.change)
-            self._volume_history.append(result.vol_frac)
-            self._time_history.append(elapsed)
-            sp.solve_volume_info     = f"Vol={result.vol_frac:.3f}"
-            sp.solve_change_info     = f"Δ={result.change:.5f}"
-
-            context.workspace.status_text_set(
-                f"TopOpt  {sp.solve_iter_info}  {sp.solve_compliance_info}  "
-                f"{sp.solve_change_info}  {sp.solve_time_info}  {sp.solve_total_time_info}     [ESC] Cancel"
-            )
-            print(f"[TopOpt] {sp.solve_iter_info}  {sp.solve_compliance_info}"
-                  f"  {sp.solve_change_info}  {sp.solve_time_info}  {sp.solve_total_time_info}")
-
-            if result.converged:
-                self._finish(context)
-                context.workspace.status_text_set(
-                    f"TopOpt  Converged  {sp.solve_iter_info}  "
-                    f"{sp.solve_compliance_info}  {sp.solve_total_time_info}"
-                )
-                print(f"[TopOpt] Converged  {sp.solve_iter_info}  {sp.solve_compliance_info}  {sp.solve_total_time_info}")
-                _show_compliance_graph(
-                    self._compliance_history or [],
-                    self._delta_history,
-                    self._volume_history,
-                    self._time_history,
-                )
-                self._show_result(context)
-                self.report({'INFO'}, f"Converged in {result.iteration} iterations.")
-                return {'FINISHED'}
-
-        elif event.type in {'ESC', 'RIGHTMOUSE'}:
-            self._finish(context)
-            sp.solve_status = "Cancelled"
-            context.workspace.status_text_set(
-                f"TopOpt  Cancelled  {sp.solve_iter_info}  {sp.solve_total_time_info}"
-            )
-            print(f"[TopOpt] Cancelled (ESC)  {sp.solve_iter_info}  {sp.solve_total_time_info}")
-            _show_compliance_graph(
-                    self._compliance_history or [],
-                    self._delta_history,
-                    self._volume_history,
-                    self._time_history,
-                )
+        if event.type == 'ESC' and event.value == 'PRESS':
             self.report({'WARNING'}, "Solve cancelled.")
-            return {'CANCELLED'}
+            return self._end(context, "Cancelled")
+        if event.type != 'TIMER':
+            return {'PASS_THROUGH'}
+        if sp.solve_cancel_requested:
+            return self._end(context, "Cancelled")
+        if not sp.is_solving:  # e.g. reverted by an undo while solving
+            sp.is_solving = True
 
+        # Take everything the solver thread posted since the last tick.
+        latest = None
+        while True:
+            try:
+                kind, payload, elapsed = self._worker.results.get_nowait()
+            except queue.Empty:
+                break
+            if kind == 'error':
+                self.report({'ERROR'}, f"{type(payload).__name__}: {payload}")
+                return self._end(context, f"Error: {type(payload).__name__}: {payload}")
+            if kind == 'done':
+                return self._end(context, "Max iterations reached", finished=True)
+            self._record(context, payload, elapsed)
+            latest = payload
+            if latest.converged:
+                break
+
+        if latest is not None:
+            preview.build_result_preview(context, self._problem, latest.density, sp.density_threshold)
+            self._redraw(context)
+            if latest.converged:
+                self.report({'INFO'}, f"Converged in {latest.iteration} iterations.")
+                return self._end(context, "Converged", finished=True)
+
+        running = time.time() - self._worker.iter_started
+        if running > sp.iter_timeout_secs:
+            return self._end(context, f"Timed out: an iteration ran over {sp.iter_timeout_secs}s. "
+                                      f"Reduce grid resolution.")
+
+        context.workspace.status_text_set(
+            f"TopOpt  {sp.solve_iter_info or 'Starting'}  {sp.solve_compliance_info}  "
+            f"{sp.solve_change_info}  next iter {_fmt(running)}  "
+            f"Total: {_fmt(time.time() - self._solve_start)}     [ESC] Cancel"
+        )
         return {'PASS_THROUGH'}
+
+    def _record(self, context, r, elapsed):
+        """Store one iteration's result in the cache, panel fields, history and console."""
+        sp = context.scene.topopt
+        res.cache_result(self._problem, r.density)
+        sp.solve_status          = ""
+        sp.solve_iter_info       = f"Iter {r.iteration}/{self._max_iter}"
+        sp.solve_time_info       = f"Iter: {_fmt(elapsed)}"
+        sp.solve_total_time_info = f"Total: {_fmt(time.time() - self._solve_start)}"
+        sp.solve_compliance_info = f"Comp={r.compliance:.4g}"
+        sp.solve_volume_info     = f"Vol={r.vol_frac:.3f}"
+        sp.solve_change_info     = f"Δ={r.change:.5f}"
+        self._compliance_history.append(r.compliance)
+        self._delta_history.append(r.change)
+        self._volume_history.append(r.vol_frac)
+        self._time_history.append(elapsed)
+        print(f"[TopOpt] {sp.solve_iter_info}  {sp.solve_compliance_info}"
+              f"  {sp.solve_change_info}  {sp.solve_time_info}  {sp.solve_total_time_info}")
+
+    def _end(self, context, status, finished=False):
+        """Stop solving and report `status` in the panel, status bar and console."""
+        sp = context.scene.topopt
+        self._finish(context)
+        sp.solve_status = status
+        summary = f"{sp.solve_iter_info}  {sp.solve_compliance_info}  {sp.solve_total_time_info}"
+        context.workspace.status_text_set(f"TopOpt  {status}  {summary}")
+        print(f"[TopOpt] {status}  {summary}")
+        _show_compliance_graph(
+            self._compliance_history or [],
+            self._delta_history,
+            self._volume_history,
+            self._time_history,
+        )
+        if finished:
+            self._show_result(context)
+            return {'FINISHED'}
+        return {'CANCELLED'}
+
+    def cancel(self, context):
+        # Blender cancelled the modal (e.g. a file was loaded): stop the thread too.
+        self._finish(context)
 
     def invoke(self, context, event):
         n_dom = context.scene.topopt.grid_domain_voxels
@@ -495,11 +491,20 @@ class TOPOPT_OT_solve_3d(Operator):
         return self._start_modal(context)
 
     def _start_modal(self, context):
+        global _active_worker
         sp = context.scene.topopt
+        if _active_worker is not None and _active_worker.is_alive():
+            self.report({'WARNING'}, "The previous solve is still finishing its last iteration — "
+                                     "try again in a moment.")
+            return {'CANCELLED'}
         if preview.PREVIEW_NAME not in bpy.data.objects:
             self.report({'ERROR'}, "No preview mesh — run 'Voxelize & Preview' first.")
             return {'CANCELLED'}
         bpy.data.objects[preview.PREVIEW_NAME].hide_set(False)
+        meshing.hide_mesh()  # the previous mesh no longer matches the new solve
+        for o in context.view_layer.objects:  # keep the domain mesh from covering the live cubes
+            if o.type == 'MESH' and o.topopt.role == props.ROLE_DOMAIN:
+                o.hide_set(True)
         try:
             p = problem.gather_problem(context)
         except Exception as e:
@@ -513,7 +518,7 @@ class TOPOPT_OT_solve_3d(Operator):
             self.report({'ERROR'}, f"Solver import error: {type(e).__name__}: {e}")
             return {'CANCELLED'}
 
-        self._gen = solve_3d(
+        gen = solve_3d(
             p,
             penal=sp.penalty,
             filter_radius=sp.filter_radius_voxels,
@@ -521,6 +526,7 @@ class TOPOPT_OT_solve_3d(Operator):
             conv_tol=sp.convergence_tol,
             move_limit=sp.oc_move_limit,
         )
+        self._max_iter = sp.max_iterations
 
         nx, ny, nz = p.shape
         sp.solve_status          = f"Starting solver ({nx}×{ny}×{nz} grid)…"
@@ -545,16 +551,20 @@ class TOPOPT_OT_solve_3d(Operator):
         context.workspace.status_text_set(
             f"TopOpt  Starting ({nx}×{ny}×{nz})     [ESC] Cancel"
         )
+        self._worker = _active_worker = _SolveWorker(gen)
+        self._worker.start()
         self._timer = wm.event_timer_add(0.05, window=context.window)
         wm.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
     def _finish(self, context):
+        if self._worker is not None:
+            self._worker.stop.set()  # exits after its current iteration
+            self._worker = None
         wm = context.window_manager
         if self._timer:
             wm.event_timer_remove(self._timer)
             self._timer = None
-        self._gen = None
         context.scene.topopt.is_solving             = False
         context.scene.topopt.solve_cancel_requested = False
         context.scene.topopt.solve_confirm_pending  = False
@@ -586,13 +596,9 @@ class TOPOPT_OT_generate_mesh(Operator):
 
     def execute(self, context):
         density = res.get_cached_density()
-        if density is None:
+        p       = res.get_cached_problem()
+        if density is None or p is None:
             self.report({'WARNING'}, "No solve result — run Solve first.")
-            return {'CANCELLED'}
-        try:
-            p = problem.gather_problem(context)
-        except problem.ProblemError as e:
-            self.report({'ERROR'}, str(e))
             return {'CANCELLED'}
 
         sp  = context.scene.topopt
@@ -633,7 +639,7 @@ class TOPOPT_OT_cancel_confirm(Operator):
 
 
 class TOPOPT_OT_cancel_solve(Operator):
-    """Stop the running solver after the current iteration finishes."""
+    """Stop the running solver."""
     bl_idname = "topopt.cancel_solve"
     bl_label = "Cancel Solver  [ESC]"
     bl_options = {'REGISTER'}
@@ -710,18 +716,20 @@ class TOPOPT_PT_main(Panel):
 
         box = layout.box()
         box.label(text="Model Actions", icon='MESH_CUBE')
-        box.operator("topopt.voxelize_preview", icon='MESH_GRID')
-        n_dom = scene.topopt.grid_domain_voxels
-        est_dof = 3 * n_dom
-        if est_dof > 150_000:
+        row = box.row()
+        row.enabled = not scene.topopt.is_solving
+        row.operator("topopt.voxelize_preview", icon='MESH_GRID')
+        n_dom  = scene.topopt.grid_domain_voxels
+        n_dofs = scene.topopt.grid_n_dofs
+        if n_dofs > 150_000:
             w = box.column()
             w.alert = True
-            w.label(text=f"~{est_dof:,} DOFs — 3D solve will be very slow!", icon='ERROR')
+            w.label(text=f"{n_dofs:,} DOFs — 3D solve will be very slow!", icon='ERROR')
             w.label(text="Increase voxel size to reduce DOF count")
-        elif est_dof > 45_000:
+        elif n_dofs > 45_000:
             w = box.column()
             w.alert = True
-            w.label(text=f"~{est_dof:,} DOFs — solve may be slow", icon='INFO')
+            w.label(text=f"{n_dofs:,} DOFs — solve may be slow", icon='INFO')
         row = box.row(align=True)
         row.operator("topopt.toggle_sources", text="Show/Hide Sources", icon='HIDE_OFF')
         row.operator("topopt.print_summary",  text="Summary", icon='TEXT')
@@ -818,6 +826,8 @@ def register():
 
 
 def unregister():
+    if _active_worker is not None:
+        _active_worker.stop.set()
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)
     img = bpy.data.images.get(_GRAPH_IMAGE_NAME)

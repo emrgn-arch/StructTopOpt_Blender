@@ -1,6 +1,5 @@
 """Preview mesh generation — colored voxel cubes visualizing the optimized density field."""
 
-import bmesh
 import bpy
 import numpy as np
 
@@ -38,36 +37,68 @@ def _domain_shell(mask):
     return mask & ~interior
 
 
-def _make_cube_bmesh(bm, center, size, color):
-    """Add a unit cube to bmesh `bm` at `center`, scaled to `size`, painted `color`.
+# Cube corners in half-size units, by vertex index:
+#   0: (-,-,-)  1: (+,-,-)  2: (-,+,-)  3: (+,+,-)
+#   4: (-,-,+)  5: (+,-,+)  6: (-,+,+)  7: (+,+,+)
+_CUBE_CORNERS = np.array(
+    [(dx, dy, dz) for dz in (-1, 1) for dy in (-1, 1) for dx in (-1, 1)], dtype=np.float32)
 
-    `bm` must have a "Col" color layer already created on its loops.
+# 6 outward-facing quads.
+_CUBE_FACES = np.array([
+    (2, 3, 1, 0),  # -Z
+    (5, 7, 6, 4),  # +Z
+    (4, 6, 2, 0),  # -X
+    (3, 7, 5, 1),  # +X
+    (1, 5, 4, 0),  # -Y
+    (6, 7, 3, 2),  # +Y
+], dtype=np.int32)
+
+
+def _cube_mesh(name, centers, size, colors):
+    """Mesh with one cube per row of `centers` (N, 3), painted with `colors` (N, 4).
+
+    Colors go into a "Col" byte-color attribute, written as raw sRGB values.
     """
-    # 8 corners of the cube
-    h = size * 0.5
-    verts = []
-    for dz in (-h, +h):
-        for dy in (-h, +h):
-            for dx in (-h, +h):
-                verts.append(bm.verts.new((center[0] + dx, center[1] + dy, center[2] + dz)))
+    n = len(centers)
+    verts = centers[:, None, :].astype(np.float32) + _CUBE_CORNERS[None] * np.float32(size * 0.5)
+    loops = _CUBE_FACES[None] + (8 * np.arange(n, dtype=np.int32))[:, None, None]
 
-    # 6 faces, by vertex index in the order we created them.
-    # Indices:
-    #   0: (-,-,-)  1: (+,-,-)  2: (-,+,-)  3: (+,+,-)
-    #   4: (-,-,+)  5: (+,-,+)  6: (-,+,+)  7: (+,+,+)
-    face_indices = [
-        (2, 3, 1, 0),  # -Z  (normal → −Z)
-        (5, 7, 6, 4),  # +Z  (normal → +Z)
-        (4, 6, 2, 0),  # -X  (normal → −X)
-        (3, 7, 5, 1),  # +X  (normal → +X)
-        (1, 5, 4, 0),  # -Y  (normal → −Y)
-        (6, 7, 3, 2),  # +Y  (normal → +Y)
-    ]
-    color_layer = bm.loops.layers.color.get("Col")
-    for fi in face_indices:
-        face = bm.faces.new([verts[i] for i in fi])
-        for loop in face.loops:
-            loop[color_layer] = color
+    mesh = bpy.data.meshes.new(name)
+    mesh.vertices.add(8 * n)
+    mesh.loops.add(24 * n)
+    mesh.polygons.add(6 * n)
+    mesh.vertices.foreach_set("co", verts.ravel())
+    mesh.loops.foreach_set("vertex_index", loops.ravel())
+    mesh.polygons.foreach_set("loop_start", np.arange(0, 24 * n, 4, dtype=np.int32))
+    mesh.update(calc_edges=True)
+    mesh.shade_flat()
+
+    col = mesh.color_attributes.new("Col", 'BYTE_COLOR', 'POINT')
+    col.data.foreach_set("color_srgb", np.repeat(colors.astype(np.float32), 8, axis=0).ravel())
+    return mesh
+
+
+def _replace_preview_object(context, problem, idx, colors):
+    """Replace the preview object with one cube per voxel index row in `idx` (N, 3).
+
+    Returns (obj, was_hidden) where was_hidden is the old preview's visibility.
+    """
+    was_hidden = clear_preview()
+
+    centers = problem.grid_offset_local + (idx + 0.5) * problem.voxel_size
+    mesh = _cube_mesh(PREVIEW_NAME + "_mesh", centers,
+                      problem.voxel_size * _CUBE_FRACTION, colors)
+    obj  = bpy.data.objects.new(PREVIEW_NAME, mesh)
+    context.collection.objects.link(obj)
+
+    domain = next((o for o in context.scene.objects
+                   if o.type == 'MESH' and o.topopt.role == props.ROLE_DOMAIN), None)
+    if domain is not None:
+        obj.parent = domain
+        obj.matrix_parent_inverse.identity()
+
+    _ensure_vertex_color_material(obj)
+    return obj, was_hidden
 
 
 def build_preview_mesh(context, problem, show_domain=True):
@@ -80,8 +111,6 @@ def build_preview_mesh(context, problem, show_domain=True):
     Returns the created bpy Object.
     """
     grid_shape = problem.shape
-    vs = problem.voxel_size
-
 
     nx, ny, nz = grid_shape
     role_color = np.zeros((nx, ny, nz, 4), dtype=np.float32)
@@ -92,7 +121,6 @@ def build_preview_mesh(context, problem, show_domain=True):
         shell = _domain_shell(m)
         role_color[shell] = _COLOR_DOMAIN
         role_show |= shell
-
 
     for pr in problem.property_regions:
         m = pr.mask & ~problem.support_mask
@@ -108,46 +136,8 @@ def build_preview_mesh(context, problem, show_domain=True):
     role_color[problem.support_mask] = _COLOR_SUPPORT
     role_show |= problem.support_mask
 
-    # Find/create the preview object
-    if PREVIEW_NAME in bpy.data.objects:
-        old = bpy.data.objects[PREVIEW_NAME]
-        old_mesh = old.data
-        bpy.data.objects.remove(old, do_unlink=True)
-        if old_mesh.users == 0:
-            bpy.data.meshes.remove(old_mesh)
-
-    mesh = bpy.data.meshes.new(PREVIEW_NAME + "_mesh")
-    obj = bpy.data.objects.new(PREVIEW_NAME, mesh)
-    context.collection.objects.link(obj)
-
-    bm = bmesh.new()
-    # Create the color layer up front so _make_cube_bmesh can write to it.
-    bm.loops.layers.color.new("Col")
-
-    cube_size = vs * _CUBE_FRACTION
-    offset = problem.grid_offset_local
-
-    # Iterate only over visible voxels — much faster than full grid.
-    idx_i, idx_j, idx_k = np.where(role_show)
-    for i, j, k in zip(idx_i, idx_j, idx_k):
-        cx = offset[0] + (i + 0.5) * vs
-        cy = offset[1] + (j + 0.5) * vs
-        cz = offset[2] + (k + 0.5) * vs
-        _make_cube_bmesh(bm, (cx, cy, cz), cube_size, tuple(role_color[i, j, k]))
-
-    bm.normal_update()
-    bm.to_mesh(mesh)
-    bm.free()
-    mesh.update()
-
-    domain = next((o for o in context.scene.objects
-                   if o.type == 'MESH' and o.topopt.role == props.ROLE_DOMAIN), None)
-    if domain is not None:
-        obj.parent = domain
-        obj.matrix_parent_inverse.identity()
-
-    _ensure_vertex_color_material(obj)
-
+    idx = np.argwhere(role_show)
+    obj, _ = _replace_preview_object(context, problem, idx, role_color[role_show])
     return obj
 
 
@@ -201,17 +191,15 @@ def build_result_preview(context, problem, density, threshold=0.3):
     black void voxels. Vectorised color assignment keeps it fast.
     Support and load voxels are always included regardless of threshold.
     """
-    vs     = problem.voxel_size
-    offset = problem.grid_offset_local
-
     load_mask = np.zeros(problem.shape, dtype=bool)
     for lc in problem.loads:
         load_mask |= lc.mask
 
     show = (density > threshold) | problem.support_mask | load_mask
 
-    idx_i, idx_j, idx_k = np.where(show)
-    n_show = len(idx_i)
+    idx = np.argwhere(show)
+    idx_i, idx_j, idx_k = idx.T
+    n_show = len(idx)
 
     rho_vals = np.clip(density[idx_i, idx_j, idx_k], 0.0, 1.0).astype(np.float32)
     if _INVERT_DENSITY_COLORS:
@@ -231,43 +219,7 @@ def build_result_preview(context, problem, density, threshold=0.3):
     is_support = problem.support_mask[idx_i, idx_j, idx_k]
     colors_arr[is_support] = _COLOR_SUPPORT
 
-    was_hidden = False
-    if PREVIEW_NAME in bpy.data.objects:
-        old = bpy.data.objects[PREVIEW_NAME]
-        was_hidden = old.hide_get()
-        old_mesh = old.data
-        bpy.data.objects.remove(old, do_unlink=True)
-        if old_mesh.users == 0:
-            bpy.data.meshes.remove(old_mesh)
-
-    mesh = bpy.data.meshes.new(PREVIEW_NAME + "_mesh")
-    obj  = bpy.data.objects.new(PREVIEW_NAME, mesh)
-    context.collection.objects.link(obj)
-
-    bm = bmesh.new()
-    bm.loops.layers.color.new("Col")
-    cube_size = vs * _CUBE_FRACTION
-
-    for n in range(n_show):
-        i, j, k = int(idx_i[n]), int(idx_j[n]), int(idx_k[n])
-        cx = offset[0] + (i + 0.5) * vs
-        cy = offset[1] + (j + 0.5) * vs
-        cz = offset[2] + (k + 0.5) * vs
-        _make_cube_bmesh(bm, (cx, cy, cz), cube_size, tuple(colors_arr[n]))
-
-    bm.normal_update()
-    bm.to_mesh(mesh)
-    bm.free()
-    mesh.update()
-
-    domain = next((o for o in context.scene.objects
-                   if o.type == 'MESH' and o.topopt.role == props.ROLE_DOMAIN), None)
-    if domain is not None:
-        obj.parent = domain
-        obj.matrix_parent_inverse.identity()
-
-    _ensure_vertex_color_material(obj)
-
+    obj, was_hidden = _replace_preview_object(context, problem, idx, colors_arr)
     if was_hidden:
         obj.hide_set(True)
 
@@ -275,13 +227,19 @@ def build_result_preview(context, problem, density, threshold=0.3):
 
 
 def clear_preview():
-    """Remove the preview object if it exists."""
-    if PREVIEW_NAME in bpy.data.objects:
-        old = bpy.data.objects[PREVIEW_NAME]
-        old_mesh = old.data
-        bpy.data.objects.remove(old, do_unlink=True)
-        if old_mesh and old_mesh.users == 0:
-            bpy.data.meshes.remove(old_mesh)
+    """Remove the preview object if it exists. Returns whether it was hidden."""
+    if PREVIEW_NAME not in bpy.data.objects:
+        return False
+    old = bpy.data.objects[PREVIEW_NAME]
+    try:
+        was_hidden = old.hide_get()
+    except RuntimeError:  # not in the active view layer
+        was_hidden = False
+    old_mesh = old.data
+    bpy.data.objects.remove(old, do_unlink=True)
+    if old_mesh and old_mesh.users == 0:
+        bpy.data.meshes.remove(old_mesh)
+    return was_hidden
 
 
 def build_load_arrows(context, problem):

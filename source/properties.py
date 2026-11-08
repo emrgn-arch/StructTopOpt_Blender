@@ -99,32 +99,31 @@ def _on_role_change(self, context):
 def _apply_threshold(scene_props, context):
     if scene_props.is_solving:
         return
-    import bpy as _bpy
     from . import results  as _res
     from . import preview  as _prev
-    from . import problem  as _prob
     from . import meshing  as _mesh
 
     density = _res.get_cached_density()
-    if density is None:
-        return
-    try:
-        p = _prob.gather_problem(context)
-    except Exception:
+    p       = _res.get_cached_problem()
+    if density is None or p is None:
         return
 
-    _prev.build_result_preview(context, p, density, scene_props.density_threshold)
+    obj = _prev.build_result_preview(context, p, density, scene_props.density_threshold)
+    if not _mesh.mesh_visible():
+        obj.hide_set(False)
+        return
 
-    if _mesh.MESH_NAME in _bpy.data.objects:
-        _mesh.generate(
-            context, p, density,
-            threshold         = scene_props.density_threshold,
-            include_supports  = scene_props.mesh_include_supports,
-            include_loads     = scene_props.mesh_include_loads,
-            close_holes       = scene_props.mesh_close_holes,
-            smooth_factor     = scene_props.mesh_smooth_factor,
-            smooth_iterations = scene_props.mesh_smooth_iterations,
-        )
+    # A visible result mesh follows the slider; the voxel preview stays hidden.
+    _mesh.generate(
+        context, p, density,
+        threshold         = scene_props.density_threshold,
+        include_supports  = scene_props.mesh_include_supports,
+        include_loads     = scene_props.mesh_include_loads,
+        close_holes       = scene_props.mesh_close_holes,
+        smooth_factor     = scene_props.mesh_smooth_factor,
+        smooth_iterations = scene_props.mesh_smooth_iterations,
+    )
+    obj.hide_set(True)
 
 
 class TopOptObjectProps(PropertyGroup):
@@ -166,7 +165,7 @@ class TopOptObjectProps(PropertyGroup):
 
     property_target_density: FloatProperty(
         name="Target Density",
-        description="1.0 = keep solid, 0.0 = remove",
+        description="1.0 = keep solid, 0.0 = keep empty, in between = fraction of material to keep inside this region",
         default=1.0, min=0.0, max=1.0, subtype='FACTOR',
     )
 
@@ -222,10 +221,11 @@ class TopOptSceneProps(PropertyGroup):
     density_threshold: FloatProperty(
         name="Threshold",
         description="Hide voxels below this density in the result view",
-        default=0.7, min=0.0, max=1.0, subtype='FACTOR',
+        default=0.7, min=0.0, max=0.99, subtype='FACTOR',  # 1.0 would hide every voxel
         update=lambda self, ctx: _apply_threshold(self, ctx),
     )
     grid_domain_voxels: IntProperty(default=0)
+    grid_n_dofs:        IntProperty(default=0)
 
     mesh_include_supports: BoolProperty(
         name="Include Supports",

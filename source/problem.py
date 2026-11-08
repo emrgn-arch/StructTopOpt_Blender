@@ -46,6 +46,8 @@ class ProblemData:
     passive_solid_mask: np.ndarray = None
     passive_void_mask: np.ndarray = None
     full_load_mask: np.ndarray = None
+    # Property regions with 0 < target < 1, each with its own volume fraction (disjoint masks).
+    volume_regions: list[PropertyRegion] = field(default_factory=list)
 
     @property
     def n_design_voxels(self) -> int:
@@ -58,6 +60,20 @@ class ProblemData:
     @property
     def n_support_voxels(self) -> int:
         return int(self.support_mask.sum())
+
+    @property
+    def n_free_dofs(self) -> int:
+        """Size of the FE system: 3 DOFs per node of a domain voxel, minus nodes fixed by supports."""
+        nx, ny, nz = self.shape
+        used  = np.zeros((nx + 1, ny + 1, nz + 1), dtype=bool)
+        fixed = np.zeros_like(used)
+        for di in (0, 1):
+            for dj in (0, 1):
+                for dk in (0, 1):
+                    corner = (slice(di, di + nx), slice(dj, dj + ny), slice(dk, dk + nz))
+                    used[corner]  |= self.domain_mask
+                    fixed[corner] |= self.support_mask
+        return 3 * int((used & ~fixed).sum())
 
 
 class ProblemError(Exception):
@@ -158,6 +174,17 @@ def gather_problem(context) -> ProblemData:
 
     passive_solid |= support_mask
 
+    # Partial targets become local volume constraints. Fixed solid/void voxels
+    # take priority; where partial regions overlap, the first one wins.
+    volume_regions: list[PropertyRegion] = []
+    claimed = passive_solid | passive_void
+    for pr in property_regions:
+        if 1e-6 < pr.target_density < 1.0 - 1e-6:
+            mask = pr.mask & ~claimed
+            claimed |= mask
+            if mask.any():
+                volume_regions.append(PropertyRegion(pr.name, mask, pr.target_density))
+
     p = ProblemData(
         voxel_size=voxel_size,
         shape=grid.shape,
@@ -172,6 +199,7 @@ def gather_problem(context) -> ProblemData:
         passive_solid_mask=passive_solid,
         passive_void_mask=passive_void,
         full_load_mask=full_load_mask,
+        volume_regions=volume_regions,
     )
 
     nx, ny, nz = grid.shape
@@ -186,6 +214,7 @@ def summarize(problem: ProblemData) -> str:
         f"  Domain voxels:  {problem.n_design_voxels}",
         f"  Support voxels: {problem.n_support_voxels}",
         f"  Loaded voxels:  {problem.n_loaded_voxels}",
+        f"  Free DOFs:      {problem.n_free_dofs}",
         f"Volume fraction target: {problem.target_volume_fraction:.2f}",
         f"Material: E={problem.youngs_modulus_GPa:g} GPa, ν={problem.poissons_ratio:.2f}",
         f"Load cases: {len(problem.loads)}",
@@ -200,7 +229,9 @@ def summarize(problem: ProblemData) -> str:
     if problem.property_regions:
         lines.append(f"Property regions: {len(problem.property_regions)}")
         for pr in problem.property_regions:
-            lines.append(f"  • {pr.name}: {pr.mask.sum()} voxels, target={pr.target_density:.2f}")
+            t = pr.target_density
+            mode = "solid" if t >= 1.0 - 1e-6 else "void" if t <= 1e-6 else "local volume fraction"
+            lines.append(f"  • {pr.name}: {pr.mask.sum()} voxels, target={t:.2f} ({mode})")
     if min(problem.shape) < 10:
         lines.append(f"\n⚠ Grid is coarse ({min(problem.shape)} voxels on shortest axis). "
                      f"Topology optimization typically needs ≥20 voxels per axis. Decrease voxel size.")

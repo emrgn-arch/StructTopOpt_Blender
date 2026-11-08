@@ -38,7 +38,7 @@ Tag regular Blender mesh objects with roles from the **Struct Topo** panel. Each
 | **Support** | Red | Voxels here are fixed (Dirichlet boundary condition) |
 | **Property Region** | Yellow | Voxels constrained to a fixed density. *Target Density*: `1.0` = force solid, `0.0` = force void. |
 
-Once roles are assigned, set the **Voxel Size** and click **Voxelize & Preview**. The viewport switches to Material Preview and shows the voxelized domain as colored cubes (transforms are applied to meshes in this stage). A DOF count and potential warning will be visible if the grid is large enough to make solving slow. (for now)
+Once roles are assigned, set the **Voxel Size** and click **Voxelize & Preview**. Only voxels that fit entirely inside the Boundary Domain mesh are used. The viewport switches to Material Preview and shows the voxelized domain as colored cubes (transforms are applied to meshes in this stage). A DOF count and potential warning will be visible if the grid is large enough to make solving slow. (for now)
 
 <div align="center">
   <img src="media/modelsetup.gif" width="500"/>
@@ -48,7 +48,7 @@ Once roles are assigned, set the **Voxel Size** and click **Voxelize & Preview**
 
 ## Solver
 
-Run the solver with the **Solve** button. Progress is shown live; iteration count, compliance, volume fraction, and density change per iteration.
+Run the solver with the **Solve** button. Progress is shown live; iteration count, compliance, volume fraction, and density change per iteration. The solver runs in the background, so Blender viewport stays usable while it works; press **ESC** or **Cancel** to stop.
 
 | Parameter | Default | Description |
 |---|---|---|
@@ -97,6 +97,22 @@ Click **Generate Mesh** to extract a mesh from the density field. An isosurface 
     </td>
   </tr>
 </table>
+
+## Release Notes
+
+### v0.4.6
+
+**Improved**
+- Solver up to ~4× to ~8× faster, by setting up the matrix structure once instead of every iteration and leaving out elements outside the domain
+- Solver moved to a background thread, Blender UI stays responsive during solve.
+
+**Fixed**
+- Property region Target Density between 0 and 1 had no effect, considering now floats.
+- Open mesh edges at the domain bounds.
+- Low-precision mesh vertices on large grids, fixed with higher precision variables.
+- Threshold slider 1.0 showed nothing (max is now 0.99).
+- Wrong DOF count in the panel.
+- Solver errors reported as "Max iterations reached".
 
 ## Acknowledgements
 

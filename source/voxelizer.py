@@ -1,8 +1,14 @@
 """
 Voxelizer — turn Blender meshes into boolean masks on a regular voxel grid.
 
-Grid axes align with the domain object's local axes. Inside-test uses 3-ray
-majority voting, which is robust against meshes that aren't perfectly watertight.
+Grid axes align with the domain object's local axes and the grid is centred in
+the domain's bounding box. Inside-test uses 3-ray majority voting, which is
+robust against meshes that aren't perfectly watertight.
+
+Domain voxels must lie entirely inside the domain mesh, so voxels never stick
+out of the design space. Role objects (load / support / property) use the
+centre test, so thin regions still capture voxels, and are then clipped to the
+domain.
 """
 
 import numpy as np
@@ -18,6 +24,16 @@ _RAY_DIRS = [
     Vector((0.011, 1.0,   0.005)).normalized(),
     Vector((0.009, 0.003, 1.0  )).normalized(),
 ]
+
+# The containment test shrinks each voxel slightly so faces that coincide with
+# the domain surface (e.g. a box domain tiled exactly) still count as inside.
+_CONTAIN_FRACTION = 0.98
+
+_CUBE_CORNERS = np.array(
+    [(dx, dy, dz) for dz in (-1, 1) for dy in (-1, 1) for dx in (-1, 1)], dtype=np.float64)
+_CUBE_FACES = np.array([
+    (2, 3, 1, 0), (5, 7, 6, 4), (4, 6, 2, 0), (3, 7, 5, 1), (1, 5, 4, 0), (6, 7, 3, 2),
+], dtype=np.int64)
 
 
 class VoxelGrid:
@@ -92,16 +108,36 @@ def _inside_test_batch(points_local, bvh, bbox_min=None, bbox_max=None):
     return result
 
 
+def _cut_by_surface(centers, voxel_size, bvh):
+    """Bool (N,): True where the voxel cube at each row of `centers` (N, 3)
+    intersects the mesh surface in `bvh`, i.e. sticks out of the mesh."""
+    n   = len(centers)
+    cut = np.zeros(n, dtype=bool)
+    if n == 0:
+        return cut
+    h     = 0.5 * voxel_size * _CONTAIN_FRACTION
+    verts = (centers[:, None, :] + _CUBE_CORNERS[None] * h).reshape(-1, 3)
+    faces = (_CUBE_FACES[None] + 8 * np.arange(n)[:, None, None]).reshape(-1, 4)
+    cubes = BVHTree.FromPolygons(verts.tolist(), faces.tolist(), epsilon=0.0)
+    pairs = cubes.overlap(bvh)  # (cube face index, mesh polygon index); real triangle intersection
+    if pairs:
+        cut[np.array(pairs)[:, 0] // 6] = True
+    return cut
+
+
 def compute_grid_shape(domain_obj, voxel_size):
-    """Return (shape, grid_offset_local, bbox_max) from the domain's local AABB."""
+    """Return (shape, grid_offset_local, bbox_max) for a grid centred in the domain's local AABB.
+
+    Only whole voxels that fit in the AABB are used, so a box domain whose
+    sides are multiples of the voxel size is tiled exactly.
+    """
     corners = np.array([list(c) for c in domain_obj.bound_box])
     bmin    = corners.min(axis=0)
     bmax    = corners.max(axis=0)
 
-    grid_offset_local = np.floor(bmin / voxel_size) * voxel_size
-    grid_max_local    = np.ceil(bmax  / voxel_size) * voxel_size
-    shape = tuple(max(1, int(round((grid_max_local[ax] - grid_offset_local[ax]) / voxel_size)))
+    shape = tuple(max(1, int(np.floor((bmax[ax] - bmin[ax]) / voxel_size + 1e-3)))
                   for ax in range(3))
+    grid_offset_local = (bmin + bmax) / 2 - np.array(shape) * voxel_size / 2
     return shape, grid_offset_local, bmax
 
 
@@ -119,6 +155,10 @@ def voxelize_domain(domain_obj, voxel_size, depsgraph):
     bvh      = _bvh_from_object(domain_obj, depsgraph)
     corners  = np.array([list(c) for c in domain_obj.bound_box])
     inside   = _inside_test_batch(pts_flat, bvh, corners.min(axis=0), corners.max(axis=0))
+
+    # Keep only voxels that lie fully inside the mesh, not just their centres.
+    inside_idx = np.flatnonzero(inside)
+    inside[inside_idx[_cut_by_surface(pts_flat[inside_idx], voxel_size, bvh)]] = False
     grid.domain_mask = inside.reshape(shape)
 
     return grid
